@@ -40,7 +40,7 @@
         <div id="passengerMessage" class="message"></div>
         <div id="passengerWaiting" class="waiting-box hidden">
           <div class="status-pill online" id="passengerWaitingText">Aguardando motorista...</div>
-          <button class="button secondary" type="button" id="cancelRideBtn">Cancelar solicitacao</button>
+          <button class="button secondary" type="button" id="cancelRideBtn">Cancelar corrida</button>
         </div>
         <div id="passengerRideInfo" class="ride-item hidden"></div>
         <button class="button secondary hidden" type="button" id="passengerCancelFloating">
@@ -240,6 +240,7 @@
     let rideModalOpen = false;
     let driverGpsEnabled = false;
     let driverWatchId = null;
+    let driverRidePoll = null;
 
     function showMessage(element, type, text) {
       element.className = `message ${type} show`;
@@ -348,13 +349,14 @@
       passengerWaitingText.textContent = base ? `${texto} (${base})` : texto;
       passengerWaitingText.classList.toggle("online", status !== "em_andamento");
       passengerWaitingText.classList.toggle("busy", status === "em_andamento");
+      const podeCancelar = status !== "finalizada" && status !== "cancelada";
       if (cancelRideBtn) {
         cancelRideBtn.classList.remove("hidden");
-        cancelRideBtn.disabled = status !== "aguardando_motorista";
+        cancelRideBtn.disabled = !podeCancelar;
       }
       if (passengerCancelFloating) {
         passengerCancelFloating.classList.toggle("hidden", !passengerWaiting);
-        passengerCancelFloating.disabled = status !== "aguardando_motorista";
+        passengerCancelFloating.disabled = !podeCancelar;
       }
       renderPassengerRideInfo();
     }
@@ -994,6 +996,56 @@
       `;
     }
 
+    function resetDriverRide(message, type) {
+      currentRide = null;
+      driverInRide = false;
+      updateDriverStatus();
+      renderCurrentRide();
+      if (driverMap && driverMap.getSource(driverRouteId)) {
+        driverMap.removeLayer(driverRouteId);
+        driverMap.removeSource(driverRouteId);
+      }
+      pickupMarker?.remove();
+      dropoffMarker?.remove();
+      driverRouteTarget = null;
+      updateDriverInstruction();
+      if (message) {
+        showMessage(driverMessage, type || "error", message);
+      }
+      stopDriverRidePoll();
+    }
+
+    function startDriverRidePoll() {
+      if (driverRidePoll || !currentRide) return;
+      driverRidePoll = setInterval(async () => {
+        if (!currentRide) return;
+        try {
+          const resposta = await fetch(API_BASE + `/corridas/${currentRide.id}`);
+          const dados = await resposta.json();
+          if (!dados.ok || !dados.corrida) return;
+          if (dados.corrida.status === "cancelada") {
+            resetDriverRide("Corrida cancelada pelo passageiro.", "error");
+            await atualizarMotoristaStatus();
+            await carregarCorridasPendentes();
+          }
+          if (dados.corrida.status === "finalizada") {
+            resetDriverRide("Corrida finalizada.", "success");
+            await atualizarMotoristaStatus();
+            await carregarCorridasPendentes();
+          }
+        } catch (erro) {
+          // silencioso
+        }
+      }, 5000);
+    }
+
+    function stopDriverRidePoll() {
+      if (driverRidePoll) {
+        clearInterval(driverRidePoll);
+        driverRidePoll = null;
+      }
+    }
+
     function renderPendingRides(lista) {
       if (driverInRide) {
         pendingRides.innerHTML = "<div class=\"ride-item\">Finalize a corrida atual para receber novas.</div>";
@@ -1249,6 +1301,7 @@
         driverLocation.textContent = "Localizacao: offline";
         driverGpsWarning?.classList.add("hidden");
         stopDriverGps();
+        stopDriverRidePoll();
         await atualizarMotoristaStatus();
         updateDriverInstruction();
         return;
@@ -1357,6 +1410,7 @@
         }
         updateDriverRoute(true);
         updateDriverInstruction();
+        startDriverRidePoll();
       } catch (erro) {
         showMessage(driverMessage, "error", "Nao foi possivel aceitar a corrida.");
       }
@@ -1387,13 +1441,14 @@
         currentRide = dados.corrida;
         renderCurrentRide();
 
-      if (currentRide.destinoLat && currentRide.destinoLng) {
-        setDriverTarget("dropoff", { lat: currentRide.destinoLat, lng: currentRide.destinoLng });
-        updateDriverRoute(true);
-        updateDriverInstruction();
-      } else {
-        showMessage(driverMessage, "error", "Destino sem coordenadas.");
-      }
+        if (currentRide.destinoLat && currentRide.destinoLng) {
+          setDriverTarget("dropoff", { lat: currentRide.destinoLat, lng: currentRide.destinoLng });
+          updateDriverRoute(true);
+          updateDriverInstruction();
+          startDriverRidePoll();
+        } else {
+          showMessage(driverMessage, "error", "Destino sem coordenadas.");
+        }
       } catch (erro) {
         showMessage(driverMessage, "error", "Nao foi possivel iniciar a corrida.");
       }
@@ -1412,24 +1467,13 @@
           return;
         }
 
-        currentRide = null;
-        driverInRide = false;
-        updateDriverStatus();
-        renderCurrentRide();
-        if (driverMap && driverMap.getSource(driverRouteId)) {
-          driverMap.removeLayer(driverRouteId);
-          driverMap.removeSource(driverRouteId);
-        }
-        pickupMarker?.remove();
-        dropoffMarker?.remove();
-        driverRouteTarget = null;
-      await atualizarMotoristaStatus();
-      await carregarCorridasPendentes();
-      updateDriverInstruction();
-    } catch (erro) {
-      showMessage(driverMessage, "error", "Nao foi possivel finalizar.");
-    }
-  };
+        resetDriverRide(null, null);
+        await atualizarMotoristaStatus();
+        await carregarCorridasPendentes();
+      } catch (erro) {
+        showMessage(driverMessage, "error", "Nao foi possivel finalizar.");
+      }
+    };
 
     window.cancelarCorridaMotorista = async function () {
       if (!currentRide || !motorista) return;
@@ -1448,20 +1492,9 @@
           return;
         }
 
-        currentRide = null;
-        driverInRide = false;
-        updateDriverStatus();
-        renderCurrentRide();
-        if (driverMap && driverMap.getSource(driverRouteId)) {
-          driverMap.removeLayer(driverRouteId);
-          driverMap.removeSource(driverRouteId);
-        }
-        pickupMarker?.remove();
-        dropoffMarker?.remove();
-        driverRouteTarget = null;
-      await atualizarMotoristaStatus();
-      await carregarCorridasPendentes();
-      showMessage(driverMessage, "success", "Corrida cancelada.");
+        resetDriverRide("Corrida cancelada.", "success");
+        await atualizarMotoristaStatus();
+        await carregarCorridasPendentes();
       updateDriverInstruction();
     } catch (erro) {
       showMessage(driverMessage, "error", "Nao foi possivel cancelar.");

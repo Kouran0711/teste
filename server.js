@@ -641,7 +641,7 @@ app.put("/corridas/:id/cancelar", async (req, res) => {
       return res.status(403).json({ ok: false, mensagem: "Passageiro invalido" });
     }
 
-    if (corrida.status !== "aguardando_motorista") {
+    if (!["aguardando_motorista", "motorista_a_caminho", "em_andamento"].includes(corrida.status)) {
       return res.status(400).json({ ok: false, mensagem: "A corrida nao pode ser cancelada agora" });
     }
 
@@ -654,6 +654,13 @@ app.put("/corridas/:id/cancelar", async (req, res) => {
 
     if (updateError) {
       return res.status(500).json({ ok: false, mensagem: updateError.message });
+    }
+
+    if (corrida.motorista_id) {
+      await supabase
+        .from("motoristas")
+        .update({ disponivel: true, updated_at: nowIso() })
+        .eq("id", corrida.motorista_id);
     }
 
     coordsPorCorrida.delete(corridaId);
