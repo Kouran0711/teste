@@ -265,6 +265,7 @@
     let passengerLastRouteUpdate = 0;
     let passengerAutoLabel = "";
     let passengerGpsReady = false;
+    let passengerGeoErrorAt = 0;
     let passengerWaiting = false;
     let passengerActiveRideId = null;
     let passengerRideStatus = null;
@@ -804,6 +805,21 @@
       return geolocationErrorMessage();
     }
 
+    function shouldShowGeoError() {
+      const now = Date.now();
+      if (now - passengerGeoErrorAt > 12000) {
+        passengerGeoErrorAt = now;
+        return true;
+      }
+      return false;
+    }
+
+    function getPositionPromise(options) {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, options);
+      });
+    }
+
     function updatePassengerMarkers() {
       if (!passengerMap) return;
       if (passengerOriginCoords) {
@@ -825,36 +841,50 @@
         showMessage(passengerMessage, "error", "Geolocalizacao nao suportada.");
         return false;
       }
-      return new Promise((resolve) => {
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            passengerOriginMode = "auto";
-            passengerGpsReady = true;
-            passengerOriginCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            passengerLivePosition = { ...passengerOriginCoords };
-            const endereco = await reverseGeocode(passengerOriginCoords);
-            if (endereco) {
-              passengerAutoLabel = endereco;
-              origemInput.value = endereco;
-            } else {
-              origemInput.value = `Lat ${passengerOriginCoords.lat.toFixed(5)}, Lng ${passengerOriginCoords.lng.toFixed(5)}`;
-            }
-            updatePassengerMarkers();
-            if (passengerDestinationCoords) {
-              updatePassengerRoute();
-            }
-            if (!passengerWatchId) {
-              startPassengerWatch();
-            }
-            resolve(true);
-          },
-          (error) => {
-            showMessage(passengerMessage, "error", geolocationErrorMessageWithDetail(error));
-            resolve(false);
-          },
-          { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
-        );
-      });
+      try {
+        let pos = null;
+        try {
+          pos = await getPositionPromise({ enableHighAccuracy: true, timeout: 25000, maximumAge: 0 });
+        } catch (error) {
+          if (error && (error.code === 2 || error.code === 3)) {
+            pos = await getPositionPromise({ enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 });
+          } else {
+            throw error;
+          }
+        }
+
+        if (!pos || !pos.coords) {
+          if (shouldShowGeoError()) {
+            showMessage(passengerMessage, "error", "Nao foi possivel obter localizacao. Verifique o GPS.");
+          }
+          return false;
+        }
+
+        passengerOriginMode = "auto";
+        passengerGpsReady = true;
+        passengerOriginCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        passengerLivePosition = { ...passengerOriginCoords };
+        const endereco = await reverseGeocode(passengerOriginCoords);
+        if (endereco) {
+          passengerAutoLabel = endereco;
+          origemInput.value = endereco;
+        } else {
+          origemInput.value = `Lat ${passengerOriginCoords.lat.toFixed(5)}, Lng ${passengerOriginCoords.lng.toFixed(5)}`;
+        }
+        updatePassengerMarkers();
+        if (passengerDestinationCoords) {
+          updatePassengerRoute();
+        }
+        if (!passengerWatchId) {
+          startPassengerWatch();
+        }
+        return true;
+      } catch (error) {
+        if (shouldShowGeoError()) {
+          showMessage(passengerMessage, "error", geolocationErrorMessageWithDetail(error));
+        }
+        return false;
+      }
     }
 
     async function updatePassengerRoute() {
@@ -920,9 +950,11 @@
           }
         },
         (error) => {
-          showMessage(passengerMessage, "error", geolocationErrorMessageWithDetail(error));
+          if (shouldShowGeoError()) {
+            showMessage(passengerMessage, "error", geolocationErrorMessageWithDetail(error));
+          }
         },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
+        { enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 }
       );
     }
 
