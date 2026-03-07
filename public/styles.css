@@ -458,6 +458,10 @@ body.driver-mode #driverPanel #driverToggle {
   display: none;
 }
 
+body.driver-mode #driverPanel #driverGpsBtn {
+  display: inline-flex;
+}
+
 body.driver-mode #logoutBtn {
   display: none;
 }

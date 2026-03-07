@@ -78,6 +78,7 @@
         <div class="status-pill" id="driverStatus">Offline</div>
         <button class="button" type="button" id="driverToggle">Ficar online</button>
         <div class="muted" id="driverLocation">Localizacao: nao definida</div>
+        <button class="button secondary" type="button" id="driverGpsBtn">Ativar GPS</button>
         <button class="button secondary" type="button" id="drawerLogout">Sair</button>
         <div style="margin-top: 16px;">
           <h3>Corrida atual</h3>
@@ -168,6 +169,7 @@
     const driverStatus = document.getElementById("driverStatus");
     const driverToggle = document.getElementById("driverToggle");
     const driverLocation = document.getElementById("driverLocation");
+    const driverGpsBtn = document.getElementById("driverGpsBtn");
     const pendingRides = document.getElementById("pendingRides");
     const currentRideBox = document.getElementById("currentRide");
 
@@ -213,6 +215,8 @@
     let driverMapReady = false;
     let rideModalRide = null;
     let rideModalOpen = false;
+    let driverGpsEnabled = false;
+    let driverWatchId = null;
 
     function showMessage(element, type, text) {
       element.className = `message ${type} show`;
@@ -707,7 +711,11 @@
     }
 
     function updateDriverMarkers() {
-      if (!driverMap || !driverPosition) return;
+      if (!driverMap) return;
+      if (!driverPosition) {
+        driverMarker?.remove();
+        return;
+      }
       driverMarker.setLngLat([driverPosition.lng, driverPosition.lat]).addTo(driverMap);
       if (driverRouteTarget) {
         fitBounds(driverMap, driverPosition, driverRouteTarget);
@@ -717,12 +725,28 @@
     }
 
     async function updateDriverRoute(force) {
-      if (!driverRouteTarget || !driverPosition || !driverMapReady) {
+      if (!driverMapReady) {
         return;
       }
-      const route = await fetchRoute(driverPosition, driverRouteTarget);
+      let origin = null;
+      let destination = null;
+      let color = "#2563eb";
+
+      if (driverPosition && driverRouteTarget) {
+        origin = driverPosition;
+        destination = driverRouteTarget;
+      } else if (currentRide && currentRide.origemLat && currentRide.origemLng && currentRide.destinoLat && currentRide.destinoLng) {
+        origin = { lat: currentRide.origemLat, lng: currentRide.origemLng };
+        destination = { lat: currentRide.destinoLat, lng: currentRide.destinoLng };
+        color = "#f97316";
+      } else {
+        return;
+      }
+
+      const route = await fetchRoute(origin, destination);
       if (!route) return;
-      setRoute(driverMap, driverRouteId, { type: "Feature", geometry: route.geometry }, "#2563eb");
+      setRoute(driverMap, driverRouteId, { type: "Feature", geometry: route.geometry }, color);
+      fitBounds(driverMap, origin, destination);
       updateDriverMarkers();
     }
 
@@ -764,8 +788,12 @@
     }
 
     function updateDriverLocationDisplay() {
+      if (!driverGpsEnabled) {
+        driverLocation.textContent = "Localizacao: GPS desligado";
+        return;
+      }
       if (!driverPosition) {
-        driverLocation.textContent = "Localizacao: nao definida";
+        driverLocation.textContent = "Localizacao: aguardando GPS";
         return;
       }
       driverLocation.textContent = `Localizacao: ${driverPosition.lat.toFixed(5)}, ${driverPosition.lng.toFixed(5)}`;
@@ -1091,19 +1119,67 @@
         pendingIds = new Set();
         closeRideModal();
         driverLocation.textContent = "Localizacao: offline";
+        stopDriverGps();
         await atualizarMotoristaStatus();
         return;
       }
 
-      driverLocation.textContent = "Localizacao: desativada";
+      updateDriverLocationDisplay();
       await atualizarMotoristaStatus();
       pendingIds = new Set();
       await carregarCorridasPendentes();
       pendingPoll = setInterval(carregarCorridasPendentes, 6000);
     }
 
+    function startDriverGps() {
+      if (!navigator.geolocation) {
+        showMessage(driverMessage, "error", "Geolocalizacao nao suportada.");
+        return;
+      }
+      if (driverWatchId !== null) return;
+      driverGpsEnabled = true;
+      driverGpsBtn.textContent = "Desativar GPS";
+      updateDriverLocationDisplay();
+
+      driverWatchId = navigator.geolocation.watchPosition(
+        async (pos) => {
+          driverPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          updateDriverLocationDisplay();
+          updateDriverMarkers();
+          await atualizarMotoristaStatus();
+          updateDriverRoute(false);
+        },
+        (error) => {
+          showMessage(driverMessage, "error", geolocationErrorMessageWithDetail(error));
+          stopDriverGps();
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
+      );
+    }
+
+    function stopDriverGps() {
+      driverGpsEnabled = false;
+      driverPosition = null;
+      driverGpsBtn.textContent = "Ativar GPS";
+      updateDriverLocationDisplay();
+      if (driverWatchId !== null) {
+        navigator.geolocation.clearWatch(driverWatchId);
+        driverWatchId = null;
+      }
+      updateDriverMarkers();
+      updateDriverRoute(true);
+    }
+
     [driverToggle, driverToggleTop].filter(Boolean).forEach((btn) => {
       btn.addEventListener("click", toggleDriverOnline);
+    });
+
+    driverGpsBtn?.addEventListener("click", () => {
+      if (driverGpsEnabled) {
+        stopDriverGps();
+      } else {
+        startDriverGps();
+      }
     });
 
     rideModalClose?.addEventListener("click", closeRideModal);
@@ -1253,8 +1329,10 @@
         document.body.classList.add("driver-mode");
         menuToggle?.classList.remove("hidden");
         driverControls?.classList.remove("hidden");
+        driverGpsBtn.textContent = "Ativar GPS";
         initDriverMap();
         updateDriverStatus();
+        updateDriverLocationDisplay();
         renderCurrentRide();
         renderPendingRides([]);
         if (!motorista) {
