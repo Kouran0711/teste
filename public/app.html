@@ -9,6 +9,10 @@
     rel="stylesheet"
     href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
   >
+  <link
+    rel="stylesheet"
+    href="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.css"
+  >
 </head>
 <body>
   <div class="app-shell">
@@ -25,15 +29,20 @@
         <h2>Pedir corrida</h2>
         <p>Digite os enderecos e escolha a forma de pagamento.</p>
         <div id="passengerMessage" class="message"></div>
-        <div class="form-field">
+
+        <div class="form-field autocomplete">
           <label for="origemInput">Origem</label>
           <input id="origemInput" placeholder="Rua, numero">
+          <div class="autocomplete-list hidden" id="origemList"></div>
         </div>
         <button class="button secondary" type="button" id="usarLocalizacao">Usar minha localizacao</button>
-        <div class="form-field">
+
+        <div class="form-field autocomplete">
           <label for="destinoInput">Destino</label>
           <input id="destinoInput" placeholder="Rua, numero">
+          <div class="autocomplete-list hidden" id="destinoList"></div>
         </div>
+
         <div class="form-field">
           <label for="pagamentoSelect">Forma de pagamento</label>
           <select id="pagamentoSelect">
@@ -70,10 +79,15 @@
     </div>
   </div>
 
+  <script src="/config.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.js"></script>
   <script>
     const API_BASE = window.location.origin && window.location.origin.startsWith("http")
       ? window.location.origin
       : "http://localhost:10000";
+
+    const MAPBOX_TOKEN = window.MAPBOX_TOKEN || "";
+    const MAPBOX_STYLE = window.MAPBOX_STYLE || "mapbox://styles/mapbox/streets-v12";
 
     const sessionRaw = localStorage.getItem("corridaSession");
     const session = sessionRaw ? JSON.parse(sessionRaw) : null;
@@ -92,38 +106,13 @@
     const driverMapEl = document.getElementById("driverMap");
     const logoutBtn = document.getElementById("logoutBtn");
 
-    let passengerMap = null;
-    let passengerDirectionsService = null;
-    let passengerDirectionsRenderer = null;
-    let passengerGeocoder = null;
-    let passengerOriginMarker = null;
-    let passengerDestinationMarker = null;
-    let passengerOriginCoords = null;
-    let passengerDestinationCoords = null;
-    let passengerDistanceKm = null;
-
-    let driverMap = null;
-    let driverMarker = null;
-    let pickupMarker = null;
-    let dropoffMarker = null;
-    let driverDirectionsService = null;
-    let driverDirectionsRenderer = null;
-    let driverPosition = null;
-    let driverOnline = false;
-    let driverInRide = false;
-    let driverWatchId = null;
-    let pendingPoll = null;
-    let pendingIds = new Set();
-    let currentRide = null;
-    let driverRouteTarget = null;
-    let lastRouteUpdate = 0;
-    let audioContext = null;
-
     const passengerMessage = document.getElementById("passengerMessage");
     const driverMessage = document.getElementById("driverMessage");
 
     const origemInput = document.getElementById("origemInput");
     const destinoInput = document.getElementById("destinoInput");
+    const origemList = document.getElementById("origemList");
+    const destinoList = document.getElementById("destinoList");
     const pagamentoSelect = document.getElementById("pagamentoSelect");
     const valorEstimado = document.getElementById("valorEstimado");
     const solicitarCorridaBtn = document.getElementById("solicitarCorrida");
@@ -134,6 +123,32 @@
     const driverLocation = document.getElementById("driverLocation");
     const pendingRides = document.getElementById("pendingRides");
     const currentRideBox = document.getElementById("currentRide");
+
+    let passengerMap = null;
+    let passengerOriginMarker = null;
+    let passengerDestinationMarker = null;
+    let passengerRouteId = "passenger-route";
+    let passengerOriginCoords = null;
+    let passengerDestinationCoords = null;
+    let passengerDistanceKm = null;
+    let passengerMapReady = false;
+
+    let driverMap = null;
+    let driverMarker = null;
+    let pickupMarker = null;
+    let dropoffMarker = null;
+    let driverRouteId = "driver-route";
+    let driverPosition = null;
+    let driverOnline = false;
+    let driverInRide = false;
+    let driverWatchId = null;
+    let pendingPoll = null;
+    let pendingIds = new Set();
+    let currentRide = null;
+    let driverRouteTarget = null;
+    let lastRouteUpdate = 0;
+    let audioContext = null;
+    let driverMapReady = false;
 
     function showMessage(element, type, text) {
       element.className = `message ${type} show`;
@@ -166,262 +181,258 @@
       window.location.href = "/index.html";
     });
 
-    function initPassengerMap() {
-      passengerMap = new google.maps.Map(passengerMapEl, {
-        center: { lat: -23.5505, lng: -46.6333 },
-        zoom: 13
-      });
-      passengerDirectionsService = new google.maps.DirectionsService();
-      passengerDirectionsRenderer = new google.maps.DirectionsRenderer({
-        map: passengerMap,
-        suppressMarkers: true
-      });
-      passengerGeocoder = new google.maps.Geocoder();
-
-      passengerOriginMarker = new google.maps.Marker({
-        map: passengerMap,
-        label: "O",
-        visible: false
-      });
-      passengerDestinationMarker = new google.maps.Marker({
-        map: passengerMap,
-        label: "D",
-        visible: false
-      });
-
-      const originAuto = new google.maps.places.Autocomplete(origemInput, {
-        fields: ["geometry", "formatted_address"]
-      });
-      const destinoAuto = new google.maps.places.Autocomplete(destinoInput, {
-        fields: ["geometry", "formatted_address"]
-      });
-
-      originAuto.addListener("place_changed", () => {
-        const place = originAuto.getPlace();
-        if (!place.geometry) {
-          showMessage(passengerMessage, "error", "Selecione um endereco valido na origem.");
-          return;
-        }
-        passengerOriginCoords = {
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng()
-        };
-        origemInput.value = place.formatted_address || origemInput.value;
-        passengerOriginMarker.setPosition(passengerOriginCoords);
-        passengerOriginMarker.setVisible(true);
-        passengerMap.setCenter(passengerOriginCoords);
-        updatePassengerRoute();
-      });
-
-      destinoAuto.addListener("place_changed", () => {
-        const place = destinoAuto.getPlace();
-        if (!place.geometry) {
-          showMessage(passengerMessage, "error", "Selecione um endereco valido no destino.");
-          return;
-        }
-        passengerDestinationCoords = {
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng()
-        };
-        destinoInput.value = place.formatted_address || destinoInput.value;
-        passengerDestinationMarker.setPosition(passengerDestinationCoords);
-        passengerDestinationMarker.setVisible(true);
-        updatePassengerRoute();
-      });
-
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((pos) => {
-          const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          passengerMap.setCenter(coords);
-        });
+    function ensureMapbox() {
+      if (!MAPBOX_TOKEN || MAPBOX_TOKEN.includes("SUA_CHAVE")) {
+        showMessage(passengerMessage, "error", "Configure sua chave Mapbox em public/config.js.");
+        showMessage(driverMessage, "error", "Configure sua chave Mapbox em public/config.js.");
+        return false;
       }
+      if (!mapboxgl || !mapboxgl.supported()) {
+        showMessage(passengerMessage, "error", "Mapbox nao suportado neste navegador.");
+        showMessage(driverMessage, "error", "Mapbox nao suportado neste navegador.");
+        return false;
+      }
+      mapboxgl.accessToken = MAPBOX_TOKEN;
+      return true;
     }
 
-    function geocodeAddress(address) {
-      return new Promise((resolve, reject) => {
-        if (!passengerGeocoder) {
-          reject("Geocoder indisponivel");
-          return;
-        }
-        passengerGeocoder.geocode({ address }, (results, status) => {
-          if (status === "OK" && results[0]) {
-            resolve({
-              coords: {
-                lat: results[0].geometry.location.lat(),
-                lng: results[0].geometry.location.lng()
-              },
-              formatted: results[0].formatted_address
-            });
-          } else {
-            reject(status);
-          }
-        });
-      });
-    }
+    function createAutocomplete(input, listEl, onSelect) {
+      let debounce = null;
 
-    function reverseGeocode(coords) {
-      return new Promise((resolve, reject) => {
-        if (!passengerGeocoder) {
-          reject("Geocoder indisponivel");
-          return;
-        }
-        passengerGeocoder.geocode({ location: coords }, (results, status) => {
-          if (status === "OK" && results[0]) {
-            resolve(results[0].formatted_address);
-          } else {
-            reject(status);
-          }
-        });
-      });
-    }
-
-    function updatePassengerRoute() {
-      clearMessage(passengerMessage);
-      if (!passengerOriginCoords || !passengerDestinationCoords) {
-        return Promise.resolve(null);
+      function closeList() {
+        listEl.classList.add("hidden");
+        listEl.innerHTML = "";
       }
 
-      return new Promise((resolve) => {
-        passengerDirectionsService.route(
-          {
-            origin: passengerOriginCoords,
-            destination: passengerDestinationCoords,
-            travelMode: google.maps.TravelMode.DRIVING
-          },
-          (result, status) => {
-            if (status !== "OK") {
-              showMessage(passengerMessage, "error", "Nao foi possivel calcular a rota.");
-              resolve(null);
+      input.addEventListener("blur", () => {
+        setTimeout(closeList, 150);
+      });
+
+      input.addEventListener("input", () => {
+        const query = input.value.trim();
+        if (query.length < 3) {
+          closeList();
+          return;
+        }
+
+        clearTimeout(debounce);
+        debounce = setTimeout(async () => {
+          try {
+            const results = await forwardGeocode(query, passengerOriginCoords || driverPosition);
+            if (!results.length) {
+              closeList();
               return;
             }
-            passengerDirectionsRenderer.setDirections(result);
-            const leg = result.routes[0].legs[0];
-            passengerDistanceKm = leg.distance.value / 1000;
-            const valor = passengerDistanceKm * 1;
-            valorEstimado.textContent = `Valor estimado: R$ ${valor.toFixed(2)} (${passengerDistanceKm.toFixed(2)} km)`;
-            resolve(passengerDistanceKm);
+            listEl.innerHTML = results
+              .map((item, index) => `
+                <div class="autocomplete-item" data-index="${index}">
+                  ${item.label}
+                </div>
+              `)
+              .join("");
+            listEl.classList.remove("hidden");
+            Array.from(listEl.querySelectorAll(".autocomplete-item")).forEach((el) => {
+              el.addEventListener("click", () => {
+                const idx = Number(el.dataset.index);
+                const item = results[idx];
+                if (!item) return;
+                input.value = item.label;
+                onSelect(item.coords);
+                closeList();
+              });
+            });
+          } catch (erro) {
+            closeList();
           }
-        );
+        }, 250);
       });
     }
 
-    usarLocalizacaoBtn.addEventListener("click", async () => {
-      clearMessage(passengerMessage);
-      if (!navigator.geolocation) {
-        showMessage(passengerMessage, "error", "Geolocalizacao nao suportada.");
-        return;
+    async function forwardGeocode(query, proximity) {
+      const url = new URL("https://api.mapbox.com/search/geocode/v6/forward");
+      url.searchParams.set("q", query);
+      url.searchParams.set("access_token", MAPBOX_TOKEN);
+      url.searchParams.set("limit", "5");
+      url.searchParams.set("types", "address");
+      url.searchParams.set("language", "pt");
+      url.searchParams.set("country", "br");
+      if (proximity && Number.isFinite(proximity.lng) && Number.isFinite(proximity.lat)) {
+        url.searchParams.set("proximity", `${proximity.lng},${proximity.lat}`);
       }
+      const resposta = await fetch(url.toString());
+      const dados = await resposta.json();
+      const features = dados.features || [];
+      return features.map((feature) => ({
+        label: feature.properties?.full_address || feature.properties?.name || feature.place_name || feature.text,
+        coords: {
+          lng: feature.geometry.coordinates[0],
+          lat: feature.geometry.coordinates[1]
+        }
+      }));
+    }
 
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          passengerOriginCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          passengerOriginMarker.setPosition(passengerOriginCoords);
-          passengerOriginMarker.setVisible(true);
-          passengerMap.setCenter(passengerOriginCoords);
-          try {
-            const endereco = await reverseGeocode(passengerOriginCoords);
-            origemInput.value = endereco;
-          } catch (erro) {
-            origemInput.value = `${passengerOriginCoords.lat.toFixed(5)}, ${passengerOriginCoords.lng.toFixed(5)}`;
-          }
-          updatePassengerRoute();
-        },
-        () => {
-          showMessage(passengerMessage, "error", "Nao foi possivel obter sua localizacao.");
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
+    async function reverseGeocode(coords) {
+      const url = new URL("https://api.mapbox.com/search/geocode/v6/reverse");
+      url.searchParams.set("longitude", coords.lng);
+      url.searchParams.set("latitude", coords.lat);
+      url.searchParams.set("access_token", MAPBOX_TOKEN);
+      url.searchParams.set("language", "pt");
+      const resposta = await fetch(url.toString());
+      const dados = await resposta.json();
+      const feature = (dados.features || [])[0];
+      if (!feature) return null;
+      return feature.properties?.full_address || feature.properties?.name || feature.place_name || feature.text;
+    }
+
+    async function fetchRoute(origin, destination) {
+      const url = new URL(
+        `https://api.mapbox.com/directions/v5/mapbox/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}`
       );
-    });
-
-    solicitarCorridaBtn.addEventListener("click", async () => {
-      clearMessage(passengerMessage);
-      let origemTexto = origemInput.value.trim();
-      let destinoTexto = destinoInput.value.trim();
-
-      if (!origemTexto || !destinoTexto) {
-        showMessage(passengerMessage, "error", "Informe origem e destino.");
-        return;
+      url.searchParams.set("access_token", MAPBOX_TOKEN);
+      url.searchParams.set("geometries", "geojson");
+      url.searchParams.set("overview", "full");
+      const resposta = await fetch(url.toString());
+      const dados = await resposta.json();
+      if (!dados.routes || !dados.routes[0]) {
+        return null;
       }
+      const rota = dados.routes[0];
+      return {
+        distanceKm: rota.distance / 1000,
+        geometry: rota.geometry
+      };
+    }
 
-      try {
-        if (!passengerOriginCoords) {
-          const result = await geocodeAddress(origemTexto);
-          passengerOriginCoords = result.coords;
-          origemTexto = result.formatted;
-          origemInput.value = result.formatted;
-        }
-        if (!passengerDestinationCoords) {
-          const result = await geocodeAddress(destinoTexto);
-          passengerDestinationCoords = result.coords;
-          destinoTexto = result.formatted;
-          destinoInput.value = result.formatted;
-        }
-
-        const distance = await updatePassengerRoute();
-
-        const distanciaKm = distance ? Number(distance.toFixed(2)) : null;
-        const pagamentoMetodo = pagamentoSelect.value;
-
-        const resposta = await fetch(API_BASE + "/corridas", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            passageiroId: usuario.id,
-            origem: origemTexto,
-            destino: destinoTexto,
-            origemLat: passengerOriginCoords.lat,
-            origemLng: passengerOriginCoords.lng,
-            destinoLat: passengerDestinationCoords.lat,
-            destinoLng: passengerDestinationCoords.lng,
-            distanciaKm,
-            pagamentoMetodo
-          })
+    function setRoute(map, id, geojson, color) {
+      if (!map || !geojson) return;
+      const source = map.getSource(id);
+      if (source) {
+        source.setData(geojson);
+      } else {
+        map.addSource(id, { type: "geojson", data: geojson });
+        map.addLayer({
+          id,
+          type: "line",
+          source: id,
+          layout: { "line-join": "round", "line-cap": "round" },
+          paint: { "line-color": color || "#0e7c86", "line-width": 4 }
         });
-        const dados = await resposta.json();
-
-        if (!dados.ok) {
-          showMessage(passengerMessage, "error", dados.mensagem || "Falha ao solicitar corrida.");
-          return;
-        }
-
-        showMessage(passengerMessage, "success", "Corrida solicitada! Aguardando motorista.");
-      } catch (erro) {
-        showMessage(passengerMessage, "error", "Nao foi possivel solicitar a corrida.");
       }
-    });
+    }
 
-    function initDriverMap() {
-      driverMap = new google.maps.Map(driverMapEl, {
-        center: { lat: -23.5505, lng: -46.6333 },
+    function fitBounds(map, origin, destination) {
+      if (!map || !origin || !destination) return;
+      const bounds = new mapboxgl.LngLatBounds();
+      bounds.extend([origin.lng, origin.lat]);
+      bounds.extend([destination.lng, destination.lat]);
+      map.fitBounds(bounds, { padding: 60, maxZoom: 15 });
+    }
+
+    function initPassengerMap() {
+      if (!ensureMapbox()) return;
+      passengerMap = new mapboxgl.Map({
+        container: "passengerMap",
+        style: MAPBOX_STYLE,
+        center: [-46.6333, -23.5505],
         zoom: 13
       });
-      driverDirectionsService = new google.maps.DirectionsService();
-      driverDirectionsRenderer = new google.maps.DirectionsRenderer({
-        map: driverMap,
-        suppressMarkers: true
+
+      passengerMap.on("load", () => {
+        passengerMapReady = true;
       });
 
-      driverMarker = new google.maps.Marker({
-        map: driverMap,
-        label: "Voce"
-      });
-      pickupMarker = new google.maps.Marker({
-        map: driverMap,
-        label: "O",
-        visible: false
-      });
-      dropoffMarker = new google.maps.Marker({
-        map: driverMap,
-        label: "D",
-        visible: false
-      });
+      passengerOriginMarker = new mapboxgl.Marker({ color: "#0e7c86" }).setLngLat([-46.6333, -23.5505]);
+      passengerDestinationMarker = new mapboxgl.Marker({ color: "#f97316" }).setLngLat([-46.6333, -23.5505]);
+    }
 
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((pos) => {
-          const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          driverMap.setCenter(coords);
-        });
+    function updatePassengerMarkers() {
+      if (!passengerMap) return;
+      if (passengerOriginCoords) {
+        passengerOriginMarker.setLngLat([passengerOriginCoords.lng, passengerOriginCoords.lat]).addTo(passengerMap);
       }
+      if (passengerDestinationCoords) {
+        passengerDestinationMarker.setLngLat([passengerDestinationCoords.lng, passengerDestinationCoords.lat]).addTo(passengerMap);
+      }
+      if (passengerOriginCoords && passengerDestinationCoords) {
+        fitBounds(passengerMap, passengerOriginCoords, passengerDestinationCoords);
+      }
+    }
+
+    async function updatePassengerRoute() {
+      clearMessage(passengerMessage);
+      if (!passengerOriginCoords || !passengerDestinationCoords) {
+        return null;
+      }
+
+      const route = await fetchRoute(passengerOriginCoords, passengerDestinationCoords);
+      if (!route) {
+        showMessage(passengerMessage, "error", "Nao foi possivel calcular a rota.");
+        return null;
+      }
+
+      passengerDistanceKm = route.distanceKm;
+      const valor = passengerDistanceKm * 1;
+      valorEstimado.textContent = `Valor estimado: R$ ${valor.toFixed(2)} (${passengerDistanceKm.toFixed(2)} km)`;
+
+      if (passengerMapReady) {
+        setRoute(passengerMap, passengerRouteId, { type: "Feature", geometry: route.geometry }, "#0e7c86");
+      }
+      updatePassengerMarkers();
+      return passengerDistanceKm;
+    }
+
+    function initDriverMap() {
+      if (!ensureMapbox()) return;
+      driverMap = new mapboxgl.Map({
+        container: "driverMap",
+        style: MAPBOX_STYLE,
+        center: [-46.6333, -23.5505],
+        zoom: 13
+      });
+
+      driverMap.on("load", () => {
+        driverMapReady = true;
+      });
+
+      driverMarker = new mapboxgl.Marker({ color: "#0e7c86" }).setLngLat([-46.6333, -23.5505]);
+      pickupMarker = new mapboxgl.Marker({ color: "#2563eb" }).setLngLat([-46.6333, -23.5505]);
+      dropoffMarker = new mapboxgl.Marker({ color: "#f97316" }).setLngLat([-46.6333, -23.5505]);
+    }
+
+    function updateDriverMarkers() {
+      if (!driverMap || !driverPosition) return;
+      driverMarker.setLngLat([driverPosition.lng, driverPosition.lat]).addTo(driverMap);
+      if (driverRouteTarget) {
+        fitBounds(driverMap, driverPosition, driverRouteTarget);
+      } else {
+        driverMap.setCenter([driverPosition.lng, driverPosition.lat]);
+      }
+    }
+
+    async function updateDriverRoute(force) {
+      if (!driverRouteTarget || !driverPosition || !driverMapReady) {
+        return;
+      }
+      const now = Date.now();
+      if (!force && now - lastRouteUpdate < 10000) {
+        return;
+      }
+      lastRouteUpdate = now;
+      const route = await fetchRoute(driverPosition, driverRouteTarget);
+      if (!route) return;
+      setRoute(driverMap, driverRouteId, { type: "Feature", geometry: route.geometry }, "#2563eb");
+      updateDriverMarkers();
+    }
+
+    function setDriverTarget(tipo, coords) {
+      driverRouteTarget = coords;
+      if (tipo === "pickup") {
+        pickupMarker.setLngLat([coords.lng, coords.lat]).addTo(driverMap);
+        dropoffMarker.remove();
+      } else if (tipo === "dropoff") {
+        dropoffMarker.setLngLat([coords.lng, coords.lat]).addTo(driverMap);
+      }
+      updateDriverRoute(true);
     }
 
     function updateDriverStatus() {
@@ -482,45 +493,6 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-    }
-
-    function updateDriverRoute(force) {
-      if (!driverRouteTarget || !driverPosition) {
-        return;
-      }
-      const now = Date.now();
-      if (!force && now - lastRouteUpdate < 10000) {
-        return;
-      }
-      lastRouteUpdate = now;
-      driverDirectionsService.route(
-        {
-          origin: driverPosition,
-          destination: driverRouteTarget,
-          travelMode: google.maps.TravelMode.DRIVING
-        },
-        (result, status) => {
-          if (status !== "OK") {
-            return;
-          }
-          driverDirectionsRenderer.setDirections(result);
-        }
-      );
-    }
-
-    function setRouteTarget(tipo, coords) {
-      driverRouteTarget = coords;
-      if (tipo === "pickup") {
-        pickupMarker.setPosition(coords);
-        pickupMarker.setVisible(true);
-        dropoffMarker.setVisible(false);
-      }
-      if (tipo === "dropoff") {
-        dropoffMarker.setPosition(coords);
-        dropoffMarker.setVisible(true);
-        pickupMarker.setVisible(false);
-      }
-      updateDriverRoute(true);
     }
 
     function renderCurrentRide() {
@@ -602,6 +574,102 @@
       }
     }
 
+    createAutocomplete(origemInput, origemList, (coords) => {
+      passengerOriginCoords = coords;
+      updatePassengerRoute();
+    });
+    createAutocomplete(destinoInput, destinoList, (coords) => {
+      passengerDestinationCoords = coords;
+      updatePassengerRoute();
+    });
+
+    usarLocalizacaoBtn.addEventListener("click", async () => {
+      clearMessage(passengerMessage);
+      if (!navigator.geolocation) {
+        showMessage(passengerMessage, "error", "Geolocalizacao nao suportada.");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          passengerOriginCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          const endereco = await reverseGeocode(passengerOriginCoords);
+          if (endereco) {
+            origemInput.value = endereco;
+          }
+          updatePassengerRoute();
+        },
+        () => {
+          showMessage(passengerMessage, "error", "Nao foi possivel obter sua localizacao.");
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    });
+
+    solicitarCorridaBtn.addEventListener("click", async () => {
+      clearMessage(passengerMessage);
+      let origemTexto = origemInput.value.trim();
+      let destinoTexto = destinoInput.value.trim();
+
+      if (!origemTexto || !destinoTexto) {
+        showMessage(passengerMessage, "error", "Informe origem e destino.");
+        return;
+      }
+
+      try {
+        if (!passengerOriginCoords) {
+          const results = await forwardGeocode(origemTexto, passengerOriginCoords);
+          if (!results[0]) {
+            showMessage(passengerMessage, "error", "Origem nao encontrada.");
+            return;
+          }
+          passengerOriginCoords = results[0].coords;
+          origemTexto = results[0].label;
+          origemInput.value = results[0].label;
+        }
+        if (!passengerDestinationCoords) {
+          const results = await forwardGeocode(destinoTexto, passengerOriginCoords);
+          if (!results[0]) {
+            showMessage(passengerMessage, "error", "Destino nao encontrado.");
+            return;
+          }
+          passengerDestinationCoords = results[0].coords;
+          destinoTexto = results[0].label;
+          destinoInput.value = results[0].label;
+        }
+
+        const distance = await updatePassengerRoute();
+        const distanciaKm = distance ? Number(distance.toFixed(2)) : null;
+        const pagamentoMetodo = pagamentoSelect.value;
+
+        const resposta = await fetch(API_BASE + "/corridas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            passageiroId: usuario.id,
+            origem: origemTexto,
+            destino: destinoTexto,
+            origemLat: passengerOriginCoords.lat,
+            origemLng: passengerOriginCoords.lng,
+            destinoLat: passengerDestinationCoords.lat,
+            destinoLng: passengerDestinationCoords.lng,
+            distanciaKm,
+            pagamentoMetodo
+          })
+        });
+        const dados = await resposta.json();
+
+        if (!dados.ok) {
+          showMessage(passengerMessage, "error", dados.mensagem || "Falha ao solicitar corrida.");
+          return;
+        }
+
+        showMessage(passengerMessage, "success", "Corrida solicitada! Aguardando motorista.");
+      } catch (erro) {
+        showMessage(passengerMessage, "error", "Nao foi possivel solicitar a corrida.");
+      }
+    });
+
     driverToggle.addEventListener("click", async () => {
       clearMessage(driverMessage);
 
@@ -630,9 +698,8 @@
       driverWatchId = navigator.geolocation.watchPosition(
         async (pos) => {
           driverPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          driverMarker.setPosition(driverPosition);
-          driverMap.setCenter(driverPosition);
           updateDriverLocationDisplay();
+          updateDriverMarkers();
           await atualizarMotoristaStatus();
           updateDriverRoute(false);
           await carregarCorridasPendentes();
@@ -669,7 +736,7 @@
         await atualizarMotoristaStatus();
 
         if (currentRide.origemLat && currentRide.origemLng) {
-          setRouteTarget("pickup", { lat: currentRide.origemLat, lng: currentRide.origemLng });
+          setDriverTarget("pickup", { lat: currentRide.origemLat, lng: currentRide.origemLng });
         }
       } catch (erro) {
         showMessage(driverMessage, "error", "Nao foi possivel aceitar a corrida.");
@@ -693,7 +760,7 @@
         renderCurrentRide();
 
         if (currentRide.destinoLat && currentRide.destinoLng) {
-          setRouteTarget("dropoff", { lat: currentRide.destinoLat, lng: currentRide.destinoLng });
+          setDriverTarget("dropoff", { lat: currentRide.destinoLat, lng: currentRide.destinoLng });
         } else {
           showMessage(driverMessage, "error", "Destino sem coordenadas.");
         }
@@ -719,9 +786,12 @@
         driverInRide = false;
         updateDriverStatus();
         renderCurrentRide();
-        driverDirectionsRenderer.set("directions", null);
-        pickupMarker.setVisible(false);
-        dropoffMarker.setVisible(false);
+        if (driverMap && driverMap.getSource(driverRouteId)) {
+          driverMap.removeLayer(driverRouteId);
+          driverMap.removeSource(driverRouteId);
+        }
+        pickupMarker?.remove();
+        dropoffMarker?.remove();
         driverRouteTarget = null;
         await atualizarMotoristaStatus();
         await carregarCorridasPendentes();
@@ -730,7 +800,7 @@
       }
     };
 
-    window.initApp = function () {
+    function initApp() {
       updateUserSummary();
       setupPanels();
 
@@ -746,12 +816,9 @@
           driverToggle.disabled = true;
         }
       }
-    };
+    }
+
+    initApp();
   </script>
-  <script
-    src="https://maps.googleapis.com/maps/api/js?key=SUA_CHAVE_GOOGLE_MAPS&libraries=places&callback=initApp"
-    async
-    defer
-  ></script>
 </body>
 </html>
