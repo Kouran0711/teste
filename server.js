@@ -571,6 +571,54 @@ app.put("/corridas/:id/aceitar", async (req, res) => {
   }
 });
 
+app.put("/corridas/:id/cheguei", async (req, res) => {
+  const corridaId = Number(req.params.id);
+  const { motoristaId } = req.body;
+
+  if (!corridaId || !motoristaId) {
+    return res.status(400).json({ ok: false, mensagem: "corridaId e motoristaId sao obrigatorios" });
+  }
+
+  try {
+    const { data: corrida, error: corridaError } = await supabase
+      .from("corridas")
+      .select("*")
+      .eq("id", corridaId)
+      .maybeSingle();
+
+    if (corridaError) {
+      return res.status(500).json({ ok: false, mensagem: corridaError.message });
+    }
+
+    if (!corrida) {
+      return res.status(404).json({ ok: false, mensagem: "Corrida nao encontrada" });
+    }
+
+    if (corrida.motorista_id !== Number(motoristaId)) {
+      return res.status(403).json({ ok: false, mensagem: "Motorista invalido" });
+    }
+
+    if (corrida.status !== "motorista_a_caminho") {
+      return res.status(400).json({ ok: false, mensagem: "A corrida nao pode ser atualizada agora" });
+    }
+
+    const { data: atualizada, error: updateError } = await supabase
+      .from("corridas")
+      .update({ status: "motorista_no_local" })
+      .eq("id", corridaId)
+      .select("*")
+      .single();
+
+    if (updateError) {
+      return res.status(500).json({ ok: false, mensagem: updateError.message });
+    }
+
+    res.json({ ok: true, mensagem: "Motorista chegou ao local", corrida: attachCoords(atualizada) });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro ao atualizar corrida", erro: String(erro) });
+  }
+});
+
 app.put("/corridas/:id/iniciar", async (req, res) => {
   const corridaId = Number(req.params.id);
 
@@ -593,7 +641,7 @@ app.put("/corridas/:id/iniciar", async (req, res) => {
       return res.status(404).json({ ok: false, mensagem: "Corrida nao encontrada" });
     }
 
-    if (corrida.status !== "motorista_a_caminho") {
+    if (!["motorista_a_caminho", "motorista_no_local"].includes(corrida.status)) {
       return res.status(400).json({ ok: false, mensagem: "A corrida nao pode ser iniciada agora" });
     }
 
@@ -641,7 +689,7 @@ app.put("/corridas/:id/cancelar", async (req, res) => {
       return res.status(403).json({ ok: false, mensagem: "Passageiro invalido" });
     }
 
-    if (!["aguardando_motorista", "motorista_a_caminho", "em_andamento"].includes(corrida.status)) {
+    if (!["aguardando_motorista", "motorista_a_caminho", "motorista_no_local", "em_andamento"].includes(corrida.status)) {
       return res.status(400).json({ ok: false, mensagem: "A corrida nao pode ser cancelada agora" });
     }
 
@@ -698,7 +746,7 @@ app.put("/corridas/:id/cancelar-motorista", async (req, res) => {
       return res.status(403).json({ ok: false, mensagem: "Motorista invalido" });
     }
 
-    if (!["motorista_a_caminho", "em_andamento"].includes(corrida.status)) {
+    if (!["motorista_a_caminho", "motorista_no_local", "em_andamento"].includes(corrida.status)) {
       return res.status(400).json({ ok: false, mensagem: "A corrida nao pode ser cancelada agora" });
     }
 

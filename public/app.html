@@ -341,10 +341,13 @@
       const base = passengerActiveRideId ? `Corrida #${passengerActiveRideId}` : "";
       let texto = "Aguardando motorista...";
       if (status === "motorista_a_caminho") {
-        texto = "Motorista a caminho";
+        texto = "Motorista aceitou e esta a caminho";
+      }
+      if (status === "motorista_no_local") {
+        texto = "Motorista chegou ao local";
       }
       if (status === "em_andamento") {
-        texto = "Em corrida";
+        texto = "Corrida em andamento";
       }
       passengerWaitingText.textContent = base ? `${texto} (${base})` : texto;
       passengerWaitingText.classList.toggle("online", status !== "em_andamento");
@@ -437,6 +440,15 @@
         }
         if (status && status !== passengerRideStatus) {
           setPassengerStatus(status);
+          if (status === "motorista_a_caminho") {
+            showMessage(passengerMessage, "success", "Motorista aceitou a corrida e esta a caminho.");
+          }
+          if (status === "motorista_no_local") {
+            showMessage(passengerMessage, "success", "Motorista chegou ao local.");
+          }
+          if (status === "em_andamento") {
+            showMessage(passengerMessage, "success", "Corrida iniciada.");
+          }
         }
       } catch (erro) {
         // silencioso para evitar spam
@@ -801,6 +813,15 @@
       if (driverPosition && driverRouteTarget) {
         origin = driverPosition;
         destination = driverRouteTarget;
+      } else if (driverPosition && currentRide && currentRide.origemLat && currentRide.origemLng && currentRide.destinoLat && currentRide.destinoLng) {
+        origin = driverPosition;
+        if (currentRide.status === "em_andamento") {
+          destination = { lat: currentRide.destinoLat, lng: currentRide.destinoLng };
+          dropoffMarker.setLngLat([destination.lng, destination.lat]).addTo(driverMap);
+        } else {
+          destination = { lat: currentRide.origemLat, lng: currentRide.origemLng };
+          pickupMarker.setLngLat([destination.lng, destination.lat]).addTo(driverMap);
+        }
       } else if (currentRide && currentRide.origemLat && currentRide.origemLng && currentRide.destinoLat && currentRide.destinoLng) {
         origin = { lat: currentRide.origemLat, lng: currentRide.origemLng };
         destination = { lat: currentRide.destinoLat, lng: currentRide.destinoLng };
@@ -894,9 +915,11 @@
 
       let texto = `Corrida #${currentRide.id}`;
       if (currentRide.status === "motorista_a_caminho") {
-        texto = `Vá até a origem: ${currentRide.origem}`;
+        texto = `Va ate a origem: ${currentRide.origem}`;
+      } else if (currentRide.status === "motorista_no_local") {
+        texto = `No local: ${currentRide.origem}. Aguarde o passageiro.`;
       } else if (currentRide.status === "em_andamento") {
-        texto = `Vá até o destino: ${currentRide.destino}`;
+        texto = `Va ate o destino: ${currentRide.destino}`;
       }
 
       if (!driverGpsEnabled) {
@@ -975,6 +998,12 @@
       let actions = "";
       if (currentRide.status === "motorista_a_caminho") {
         actions = `
+          <button class="button" type="button" onclick="chegueiAoLocal()">Cheguei ao local</button>
+          <button class="button secondary" type="button" onclick="cancelarCorridaMotorista()">Cancelar corrida</button>
+        `;
+      }
+      if (currentRide.status === "motorista_no_local") {
+        actions = `
           <button class="button" type="button" onclick="iniciarCorrida()">Iniciar corrida</button>
           <button class="button secondary" type="button" onclick="cancelarCorridaMotorista()">Cancelar corrida</button>
         `;
@@ -1023,6 +1052,12 @@
           const resposta = await fetch(API_BASE + `/corridas/${currentRide.id}`);
           const dados = await resposta.json();
           if (!dados.ok || !dados.corrida) return;
+          if (dados.corrida.status && dados.corrida.status !== currentRide.status) {
+            currentRide = dados.corrida;
+            renderCurrentRide();
+            updateDriverInstruction();
+            updateDriverRoute(true);
+          }
           if (dados.corrida.status === "cancelada") {
             resetDriverRide("Corrida cancelada pelo passageiro.", "error");
             await atualizarMotoristaStatus();
@@ -1472,6 +1507,34 @@
         await carregarCorridasPendentes();
       } catch (erro) {
         showMessage(driverMessage, "error", "Nao foi possivel finalizar.");
+      }
+    };
+
+    window.chegueiAoLocal = async function () {
+      if (!currentRide || !motorista) return;
+      clearMessage(driverMessage);
+
+      try {
+        const resposta = await fetch(API_BASE + `/corridas/${currentRide.id}/cheguei`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ motoristaId: motorista.id })
+        });
+        const dados = await resposta.json();
+
+        if (!dados.ok) {
+          showMessage(driverMessage, "error", dados.mensagem || "Falha ao atualizar.");
+          return;
+        }
+
+        currentRide = dados.corrida;
+        renderCurrentRide();
+        updateDriverInstruction();
+        updateDriverRoute(true);
+        startDriverRidePoll();
+        showMessage(driverMessage, "success", "Avisamos o passageiro que voce chegou.");
+      } catch (erro) {
+        showMessage(driverMessage, "error", "Nao foi possivel atualizar a corrida.");
       }
     };
 
