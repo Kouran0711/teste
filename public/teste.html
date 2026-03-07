@@ -1,0 +1,491 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Corrida Simples</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap");
+
+    :root {
+      --bg1: #fef6e4;
+      --bg2: #d3f4ff;
+      --card: #ffffff;
+      --text: #1f2933;
+      --muted: #52606d;
+      --accent: #0e7c86;
+      --accent-dark: #0b5c63;
+      --border: #d9e2ec;
+      --shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+      --chip: #e0f2f1;
+      --chip-text: #0f766e;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", "Trebuchet MS", sans-serif;
+      color: var(--text);
+      background: linear-gradient(135deg, var(--bg1), var(--bg2));
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: -20% -10%;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(14, 124, 134, 0.18), transparent 50%),
+        radial-gradient(circle at 80% 10%, rgba(242, 153, 74, 0.18), transparent 45%),
+        radial-gradient(circle at 70% 80%, rgba(79, 70, 229, 0.12), transparent 50%);
+      z-index: -1;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 20px 60px;
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: 0.02em;
+    }
+
+    .brand p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .api-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .api-box label {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .api-box input {
+      width: 260px;
+      min-width: 200px;
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      border-radius: 10px;
+    }
+
+    .grid {
+      margin-top: 28px;
+      display: grid;
+      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      animation: floatIn 0.6s ease both;
+    }
+
+    .card:nth-child(1) {
+      animation-delay: 0.05s;
+    }
+
+    .card:nth-child(2) {
+      animation-delay: 0.12s;
+    }
+
+    .card:nth-child(3) {
+      animation-delay: 0.2s;
+    }
+
+    .card h2 {
+      margin: 0 0 6px;
+      font-size: 20px;
+    }
+
+    .card p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 10px 0 6px;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      font-size: 14px;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 14px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    button:hover {
+      background: var(--accent-dark);
+      transform: translateY(-1px);
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--chip);
+      color: var(--chip-text);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    pre {
+      background: #f3f5f7;
+      padding: 12px;
+      margin-top: 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      max-height: 220px;
+      overflow: auto;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    @keyframes floatIn {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 720px) {
+      .api-box {
+        width: 100%;
+      }
+
+      .api-box input {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <h1>Corrida Simples</h1>
+        <p>Login, cadastro e pedido de corrida em um fluxo direto.</p>
+        <div class="chip" id="sessaoStatus">Sem sessao ativa</div>
+      </div>
+      <div class="api-box">
+        <label for="apiBase">API base</label>
+        <input id="apiBase" value="https://teste-h861.onrender.com" />
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card">
+        <h2>Login</h2>
+        <p>Entre como passageiro ou motorista.</p>
+        <label for="loginTipo">Tipo</label>
+        <select id="loginTipo" onchange="toggleLoginFields()">
+          <option value="passageiro">Passageiro</option>
+          <option value="motorista">Motorista</option>
+        </select>
+        <div id="loginPassageiroFields">
+          <label for="loginTelefone">Telefone</label>
+          <input id="loginTelefone" placeholder="Ex: 11999990000" />
+        </div>
+        <div id="loginMotoristaFields" class="hidden">
+          <label for="loginPlaca">Placa</label>
+          <input id="loginPlaca" placeholder="Ex: ABC1D23" />
+        </div>
+        <button onclick="login()">Entrar</button>
+        <pre id="loginResultado"></pre>
+      </section>
+
+      <section class="card">
+        <h2>Cadastro</h2>
+        <p>Escolha se voce e passageiro ou motorista.</p>
+        <label for="cadTipo">Tipo</label>
+        <select id="cadTipo" onchange="toggleCadastroFields()">
+          <option value="passageiro">Passageiro</option>
+          <option value="motorista">Motorista</option>
+        </select>
+        <label for="cadNome">Nome</label>
+        <input id="cadNome" placeholder="Seu nome" />
+        <div id="cadPassageiroFields">
+          <label for="cadTelefone">Telefone</label>
+          <input id="cadTelefone" placeholder="Ex: 11999990000" />
+        </div>
+        <div id="cadMotoristaFields" class="hidden">
+          <label for="cadCarro">Carro</label>
+          <input id="cadCarro" placeholder="Ex: Onix 2020" />
+          <label for="cadPlaca">Placa</label>
+          <input id="cadPlaca" placeholder="Ex: ABC1D23" />
+          <label for="cadCor">Cor (opcional)</label>
+          <input id="cadCor" placeholder="Ex: Prata" />
+        </div>
+        <button onclick="cadastrar()">Cadastrar</button>
+        <pre id="cadResultado"></pre>
+      </section>
+
+      <section class="card">
+        <h2>Pedir corrida</h2>
+        <p>Use o ID do passageiro logado para solicitar.</p>
+        <label for="corridaUsuarioId">ID do passageiro</label>
+        <input id="corridaUsuarioId" placeholder="Ex: 1" />
+        <label for="corridaOrigem">Origem</label>
+        <input id="corridaOrigem" placeholder="Ex: Rua A, 100" />
+        <label for="corridaDestino">Destino</label>
+        <input id="corridaDestino" placeholder="Ex: Avenida B, 200" />
+        <button onclick="pedirCorrida()">Solicitar corrida</button>
+        <pre id="corridaResultado"></pre>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const DEFAULT_API_BASE = "https://teste-h861.onrender.com";
+    let usuarioAtual = null;
+    let motoristaAtual = null;
+
+    function getApiBase() {
+      const input = document.getElementById("apiBase");
+      const valor = (input.value || DEFAULT_API_BASE).trim();
+      return valor.replace(/\/$/, "");
+    }
+
+    function setResultado(id, data) {
+      const alvo = document.getElementById(id);
+      alvo.textContent = JSON.stringify(data, null, 2);
+    }
+
+    function renderSessao() {
+      const chip = document.getElementById("sessaoStatus");
+      if (usuarioAtual) {
+        chip.textContent = "Passageiro: " + usuarioAtual.nome + " (ID " + usuarioAtual.id + ")";
+        return;
+      }
+      if (motoristaAtual) {
+        chip.textContent = "Motorista: " + motoristaAtual.nome + " (ID " + motoristaAtual.id + ")";
+        return;
+      }
+      chip.textContent = "Sem sessao ativa";
+    }
+
+    function toggleLoginFields() {
+      const tipo = document.getElementById("loginTipo").value;
+      document.getElementById("loginPassageiroFields").classList.toggle("hidden", tipo !== "passageiro");
+      document.getElementById("loginMotoristaFields").classList.toggle("hidden", tipo !== "motorista");
+    }
+
+    function toggleCadastroFields() {
+      const tipo = document.getElementById("cadTipo").value;
+      document.getElementById("cadPassageiroFields").classList.toggle("hidden", tipo !== "passageiro");
+      document.getElementById("cadMotoristaFields").classList.toggle("hidden", tipo !== "motorista");
+    }
+
+    async function login() {
+      const tipo = document.getElementById("loginTipo").value;
+
+      try {
+        if (tipo === "passageiro") {
+          const telefone = document.getElementById("loginTelefone").value.trim();
+          if (!telefone) {
+            setResultado("loginResultado", { ok: false, mensagem: "Telefone obrigatorio" });
+            return;
+          }
+          const resposta = await fetch(getApiBase() + "/usuarios");
+          const dados = await resposta.json();
+          const usuario = (dados.usuarios || []).find((u) => String(u.telefone) === telefone);
+          if (!usuario) {
+            setResultado("loginResultado", { ok: false, mensagem: "Usuario nao encontrado" });
+            return;
+          }
+          usuarioAtual = usuario;
+          motoristaAtual = null;
+          document.getElementById("corridaUsuarioId").value = usuario.id || "";
+          setResultado("loginResultado", { ok: true, usuario });
+          renderSessao();
+          return;
+        }
+
+        const placa = document.getElementById("loginPlaca").value.trim().toUpperCase().replace(/\s+/g, "");
+        if (!placa) {
+          setResultado("loginResultado", { ok: false, mensagem: "Placa obrigatoria" });
+          return;
+        }
+        const resposta = await fetch(getApiBase() + "/motoristas");
+        const dados = await resposta.json();
+        const motorista = (dados.motoristas || []).find((m) =>
+          String(m.placa || "").toUpperCase().replace(/\s+/g, "") === placa
+        );
+        if (!motorista) {
+          setResultado("loginResultado", { ok: false, mensagem: "Motorista nao encontrado" });
+          return;
+        }
+        motoristaAtual = motorista;
+        usuarioAtual = null;
+        setResultado("loginResultado", { ok: true, motorista });
+        renderSessao();
+      } catch (erro) {
+        setResultado("loginResultado", { ok: false, mensagem: "Falha no login", erro: String(erro) });
+      }
+    }
+
+    async function cadastrar() {
+      const tipo = document.getElementById("cadTipo").value;
+      const nome = document.getElementById("cadNome").value.trim();
+
+      if (!nome) {
+        setResultado("cadResultado", { ok: false, mensagem: "Nome obrigatorio" });
+        return;
+      }
+
+      try {
+        if (tipo === "passageiro") {
+          const telefone = document.getElementById("cadTelefone").value.trim();
+          if (!telefone) {
+            setResultado("cadResultado", { ok: false, mensagem: "Telefone obrigatorio" });
+            return;
+          }
+          const resposta = await fetch(getApiBase() + "/usuarios", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nome, telefone })
+          });
+          const dados = await resposta.json();
+          setResultado("cadResultado", dados);
+          if (dados.usuario) {
+            usuarioAtual = dados.usuario;
+            motoristaAtual = null;
+            document.getElementById("corridaUsuarioId").value = dados.usuario.id || "";
+            renderSessao();
+          }
+          return;
+        }
+
+        const carro = document.getElementById("cadCarro").value.trim();
+        const placa = document.getElementById("cadPlaca").value.trim();
+        const cor = document.getElementById("cadCor").value.trim();
+
+        if (!carro || !placa) {
+          setResultado("cadResultado", { ok: false, mensagem: "Carro e placa obrigatorios" });
+          return;
+        }
+
+        const resposta = await fetch(getApiBase() + "/motoristas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nome, carro, placa, cor })
+        });
+        const dados = await resposta.json();
+        setResultado("cadResultado", dados);
+        if (dados.motorista) {
+          motoristaAtual = dados.motorista;
+          usuarioAtual = null;
+          renderSessao();
+        }
+      } catch (erro) {
+        setResultado("cadResultado", { ok: false, mensagem: "Falha no cadastro", erro: String(erro) });
+      }
+    }
+
+    async function pedirCorrida() {
+      const usuarioId = document.getElementById("corridaUsuarioId").value.trim();
+      const origem = document.getElementById("corridaOrigem").value.trim();
+      const destino = document.getElementById("corridaDestino").value.trim();
+
+      if (!usuarioId || !origem || !destino) {
+        setResultado("corridaResultado", { ok: false, mensagem: "Preencha usuario, origem e destino" });
+        return;
+      }
+
+      try {
+        const resposta = await fetch(getApiBase() + "/corridas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ usuarioId, origem, destino })
+        });
+        const dados = await resposta.json();
+        setResultado("corridaResultado", dados);
+      } catch (erro) {
+        setResultado("corridaResultado", { ok: false, mensagem: "Falha ao pedir corrida", erro: String(erro) });
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const apiBaseInput = document.getElementById("apiBase");
+      const salvo = localStorage.getItem("apiBase");
+      if (salvo) {
+        apiBaseInput.value = salvo;
+      }
+      apiBaseInput.addEventListener("change", () => {
+        localStorage.setItem("apiBase", apiBaseInput.value.trim() || DEFAULT_API_BASE);
+      });
+
+      toggleLoginFields();
+      toggleCadastroFields();
+      renderSessao();
+    });
+  </script>
+</body>
+</html>

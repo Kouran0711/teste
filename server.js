@@ -1,7 +1,9 @@
 const express = require("express");
+const path = require("path");
 const app = express();
 
 app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 10000;
 
@@ -13,11 +15,6 @@ let corridas = [];
 let proximoUsuarioId = 1;
 let proximoMotoristaId = 1;
 let proximaCorridaId = 1;
-
-// Rota inicial
-app.get("/", (req, res) => {
-  res.send("Backend do app de corrida funcionando!");
-});
 
 // Status da API
 app.get("/status", (req, res) => {
