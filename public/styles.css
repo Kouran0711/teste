@@ -349,7 +349,7 @@ body.driver-mode .waiting-box {
 .driver-action-bar {
   position: fixed;
   left: 50%;
-  bottom: 20px;
+  bottom: 16px;
   transform: translateX(-50%);
   z-index: 12;
   width: min(520px, calc(100% - 24px));
@@ -499,10 +499,12 @@ body.driver-mode .map-box {
 }
 
 body.driver-mode .map-overlay {
-  top: 92px;
-  left: 12px;
-  right: 12px;
-  width: calc(100% - 24px);
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  right: auto;
+  width: min(520px, calc(100% - 24px));
+  transform: translateX(-50%);
   max-width: none;
 }
 
@@ -642,10 +644,12 @@ body.driver-mode #logoutBtn {
   }
 
   body.driver-mode .map-overlay {
-    top: 84px;
+    position: fixed;
+    top: 68px;
     left: 10px;
     right: 10px;
     width: calc(100% - 20px);
+    transform: none;
     max-width: none;
   }
 
@@ -660,7 +664,7 @@ body.driver-mode #logoutBtn {
     right: 10px;
     width: auto;
     transform: none;
-    bottom: max(96px, env(safe-area-inset-bottom));
+    bottom: max(20px, env(safe-area-inset-bottom));
   }
 
   .driver-action-buttons {
