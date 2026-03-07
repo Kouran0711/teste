@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
@@ -218,12 +218,6 @@
       overflow: hidden;
     }
 
-    .map small {
-      display: block;
-      padding: 12px;
-      color: var(--muted);
-    }
-
     .status-pill {
       display: inline-flex;
       align-items: center;
@@ -239,6 +233,11 @@
     .status-pill.online {
       background: #dcfce7;
       color: #166534;
+    }
+
+    .status-pill.busy {
+      background: #fee2e2;
+      color: #991b1b;
     }
 
     .hidden {
@@ -302,19 +301,19 @@
     <header>
       <div class="brand">
         <h1>Corrida Simples</h1>
-        <p>Sistema simples de corridas com prioridade por distancia.</p>
+        <p>Fluxo completo alinhado com seu banco (usuarios, motoristas, corridas e pagamentos).</p>
         <div class="chip" id="sessaoStatus">Sem sessao ativa</div>
       </div>
       <div class="api-box">
         <label for="apiBase">API base</label>
-        <input id="apiBase" value="https://teste-h861.onrender.com" />
+        <input id="apiBase" value="" />
       </div>
     </header>
 
     <section class="hero">
       <div class="card">
         <h2>Obrigado por testar</h2>
-        <p>Esta pagina ja abre com o painel de login e com um resumo do fluxo do app.</p>
+        <p>Esta pagina ja abre com o painel de login e as acoes principais do app.</p>
         <div class="note">Tarifa: R$ 1,00 por km. Valor calculado automaticamente.</div>
       </div>
       <div class="card">
@@ -328,27 +327,23 @@
     <main class="grid">
       <section class="card" id="loginCard">
         <h2>Login</h2>
-        <p>Entre como passageiro ou motorista.</p>
+        <p>Use telefone ou email e senha.</p>
         <label for="loginTipo">Tipo</label>
-        <select id="loginTipo" onchange="toggleLoginFields()">
+        <select id="loginTipo">
           <option value="passageiro">Passageiro</option>
           <option value="motorista">Motorista</option>
         </select>
-        <div id="loginPassageiroFields">
-          <label for="loginTelefone">Telefone</label>
-          <input id="loginTelefone" placeholder="Ex: 11999990000" />
-        </div>
-        <div id="loginMotoristaFields" class="hidden">
-          <label for="loginPlaca">Placa</label>
-          <input id="loginPlaca" placeholder="Ex: ABC1D23" />
-        </div>
+        <label for="loginIdentificador">Telefone ou email</label>
+        <input id="loginIdentificador" placeholder="11999990000 ou email@dominio.com" />
+        <label for="loginSenha">Senha</label>
+        <input id="loginSenha" type="password" placeholder="Sua senha" />
         <button onclick="login()">Entrar</button>
         <pre id="loginResultado"></pre>
       </section>
 
       <section class="card" id="cadastroCard">
         <h2>Cadastro</h2>
-        <p>Escolha se voce e passageiro ou motorista.</p>
+        <p>Crie conta de passageiro ou motorista.</p>
         <label for="cadTipo">Tipo</label>
         <select id="cadTipo" onchange="toggleCadastroFields()">
           <option value="passageiro">Passageiro</option>
@@ -356,10 +351,12 @@
         </select>
         <label for="cadNome">Nome</label>
         <input id="cadNome" placeholder="Seu nome" />
-        <div id="cadPassageiroFields">
-          <label for="cadTelefone">Telefone</label>
-          <input id="cadTelefone" placeholder="Ex: 11999990000" />
-        </div>
+        <label for="cadTelefone">Telefone</label>
+        <input id="cadTelefone" placeholder="11999990000" />
+        <label for="cadEmail">Email (opcional)</label>
+        <input id="cadEmail" placeholder="email@dominio.com" />
+        <label for="cadSenha">Senha</label>
+        <input id="cadSenha" type="password" placeholder="Crie uma senha" />
         <div id="cadMotoristaFields" class="hidden">
           <label for="cadCarro">Carro</label>
           <input id="cadCarro" placeholder="Ex: Onix 2020" />
@@ -424,15 +421,22 @@
     crossorigin=""
   ></script>
   <script>
-    const DEFAULT_API_BASE = "https://teste-h861.onrender.com";
+    const DEFAULT_API_BASE =
+      window.location.origin && window.location.origin.startsWith("http")
+        ? window.location.origin
+        : "https://teste-h861.onrender.com";
+
     let usuarioAtual = null;
     let motoristaAtual = null;
     let map = null;
     let userMarker = null;
     let motoristaOnline = false;
+    let motoristaEmCorrida = false;
     let motoristaWatchId = null;
     let motoristaPoll = null;
     let corridaAtual = null;
+    let motoristaUltLat = null;
+    let motoristaUltLng = null;
 
     function getApiBase() {
       const input = document.getElementById("apiBase");
@@ -447,12 +451,12 @@
 
     function renderSessao() {
       const chip = document.getElementById("sessaoStatus");
-      if (usuarioAtual) {
-        chip.textContent = "Passageiro: " + usuarioAtual.nome + " (ID " + usuarioAtual.id + ")";
+      if (motoristaAtual && usuarioAtual) {
+        chip.textContent = `Motorista: ${usuarioAtual.nome} (Usuario ${usuarioAtual.id} | Motorista ${motoristaAtual.id})`;
         return;
       }
-      if (motoristaAtual) {
-        chip.textContent = "Motorista: " + motoristaAtual.nome + " (ID " + motoristaAtual.id + ")";
+      if (usuarioAtual) {
+        chip.textContent = `Passageiro: ${usuarioAtual.nome} (ID ${usuarioAtual.id})`;
         return;
       }
       chip.textContent = "Sem sessao ativa";
@@ -461,22 +465,16 @@
     function renderPanels() {
       const passageiroPanel = document.getElementById("passageiroPanel");
       const motoristaPanel = document.getElementById("motoristaPanel");
-      passageiroPanel.classList.toggle("hidden", !usuarioAtual);
+      const isPassageiro = usuarioAtual && usuarioAtual.tipo === "passageiro";
+      passageiroPanel.classList.toggle("hidden", !isPassageiro);
       motoristaPanel.classList.toggle("hidden", !motoristaAtual);
-      if (usuarioAtual && map) {
+      if (isPassageiro && map) {
         setTimeout(() => map.invalidateSize(), 100);
       }
     }
 
-    function toggleLoginFields() {
-      const tipo = document.getElementById("loginTipo").value;
-      document.getElementById("loginPassageiroFields").classList.toggle("hidden", tipo !== "passageiro");
-      document.getElementById("loginMotoristaFields").classList.toggle("hidden", tipo !== "motorista");
-    }
-
     function toggleCadastroFields() {
       const tipo = document.getElementById("cadTipo").value;
-      document.getElementById("cadPassageiroFields").classList.toggle("hidden", tipo !== "passageiro");
       document.getElementById("cadMotoristaFields").classList.toggle("hidden", tipo !== "motorista");
     }
 
@@ -570,49 +568,39 @@
 
     async function login() {
       const tipo = document.getElementById("loginTipo").value;
+      const identificador = document.getElementById("loginIdentificador").value.trim();
+      const senha = document.getElementById("loginSenha").value.trim();
+
+      if (!identificador || !senha) {
+        setResultado("loginResultado", { ok: false, mensagem: "Informe identificador e senha" });
+        return;
+      }
 
       try {
-        if (tipo === "passageiro") {
-          const telefone = document.getElementById("loginTelefone").value.trim();
-          if (!telefone) {
-            setResultado("loginResultado", { ok: false, mensagem: "Telefone obrigatorio" });
-            return;
-          }
-          const resposta = await fetch(getApiBase() + "/usuarios");
-          const dados = await resposta.json();
-          const usuario = (dados.usuarios || []).find((u) => String(u.telefone) === telefone);
-          if (!usuario) {
-            setResultado("loginResultado", { ok: false, mensagem: "Usuario nao encontrado" });
-            return;
-          }
-          usuarioAtual = usuario;
-          motoristaAtual = null;
-          document.getElementById("corridaUsuarioId").value = usuario.id || "";
-          setResultado("loginResultado", { ok: true, usuario });
-          renderSessao();
-          renderPanels();
+        const resposta = await fetch(getApiBase() + "/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tipo, identificador, senha })
+        });
+        const dados = await resposta.json();
+        setResultado("loginResultado", dados);
+
+        if (!dados.ok) {
           return;
         }
 
-        const placa = document.getElementById("loginPlaca").value.trim().toUpperCase().replace(/\s+/g, "");
-        if (!placa) {
-          setResultado("loginResultado", { ok: false, mensagem: "Placa obrigatoria" });
-          return;
+        usuarioAtual = dados.usuario;
+        motoristaAtual = dados.motorista || null;
+        motoristaEmCorrida = false;
+        corridaAtual = null;
+
+        if (usuarioAtual && usuarioAtual.tipo === "passageiro") {
+          document.getElementById("corridaUsuarioId").value = usuarioAtual.id || "";
         }
-        const resposta = await fetch(getApiBase() + "/motoristas");
-        const dados = await resposta.json();
-        const motorista = (dados.motoristas || []).find((m) =>
-          String(m.placa || "").toUpperCase().replace(/\s+/g, "") === placa
-        );
-        if (!motorista) {
-          setResultado("loginResultado", { ok: false, mensagem: "Motorista nao encontrado" });
-          return;
-        }
-        motoristaAtual = motorista;
-        usuarioAtual = null;
-        setResultado("loginResultado", { ok: true, motorista });
+
         renderSessao();
         renderPanels();
+        renderCorridaAtual();
       } catch (erro) {
         setResultado("loginResultado", { ok: false, mensagem: "Falha no login", erro: String(erro) });
       }
@@ -621,71 +609,61 @@
     async function cadastrar() {
       const tipo = document.getElementById("cadTipo").value;
       const nome = document.getElementById("cadNome").value.trim();
+      const telefone = document.getElementById("cadTelefone").value.trim();
+      const email = document.getElementById("cadEmail").value.trim();
+      const senha = document.getElementById("cadSenha").value.trim();
+      const carro = document.getElementById("cadCarro").value.trim();
+      const placa = document.getElementById("cadPlaca").value.trim();
+      const cor = document.getElementById("cadCor").value.trim();
 
-      if (!nome) {
-        setResultado("cadResultado", { ok: false, mensagem: "Nome obrigatorio" });
+      if (!nome || !telefone || !senha) {
+        setResultado("cadResultado", { ok: false, mensagem: "Nome, telefone e senha sao obrigatorios" });
+        return;
+      }
+
+      if (tipo === "motorista" && (!carro || !placa)) {
+        setResultado("cadResultado", { ok: false, mensagem: "Carro e placa sao obrigatorios" });
         return;
       }
 
       try {
-        if (tipo === "passageiro") {
-          const telefone = document.getElementById("cadTelefone").value.trim();
-          if (!telefone) {
-            setResultado("cadResultado", { ok: false, mensagem: "Telefone obrigatorio" });
-            return;
-          }
-          const resposta = await fetch(getApiBase() + "/usuarios", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nome, telefone })
-          });
-          const dados = await resposta.json();
-          setResultado("cadResultado", dados);
-          if (dados.usuario) {
-            usuarioAtual = dados.usuario;
-            motoristaAtual = null;
-            document.getElementById("corridaUsuarioId").value = dados.usuario.id || "";
-            renderSessao();
-            renderPanels();
-          }
-          return;
-        }
-
-        const carro = document.getElementById("cadCarro").value.trim();
-        const placa = document.getElementById("cadPlaca").value.trim();
-        const cor = document.getElementById("cadCor").value.trim();
-
-        if (!carro || !placa) {
-          setResultado("cadResultado", { ok: false, mensagem: "Carro e placa obrigatorios" });
-          return;
-        }
-
-        const resposta = await fetch(getApiBase() + "/motoristas", {
+        const resposta = await fetch(getApiBase() + "/auth/registrar", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nome, carro, placa, cor })
+          body: JSON.stringify({ tipo, nome, telefone, email, senha, carro, placa, cor })
         });
         const dados = await resposta.json();
         setResultado("cadResultado", dados);
-        if (dados.motorista) {
-          motoristaAtual = dados.motorista;
-          usuarioAtual = null;
-          renderSessao();
-          renderPanels();
+
+        if (!dados.ok) {
+          return;
         }
+
+        usuarioAtual = dados.usuario;
+        motoristaAtual = dados.motorista || null;
+        motoristaEmCorrida = false;
+        corridaAtual = null;
+
+        if (usuarioAtual && usuarioAtual.tipo === "passageiro") {
+          document.getElementById("corridaUsuarioId").value = usuarioAtual.id || "";
+        }
+
+        renderSessao();
+        renderPanels();
+        renderCorridaAtual();
       } catch (erro) {
         setResultado("cadResultado", { ok: false, mensagem: "Falha no cadastro", erro: String(erro) });
       }
     }
 
     async function pedirCorrida() {
-      const usuarioId = document.getElementById("corridaUsuarioId").value.trim();
+      const passageiroId = document.getElementById("corridaUsuarioId").value.trim();
       const origem = document.getElementById("corridaOrigem").value.trim();
       const destino = document.getElementById("corridaDestino").value.trim();
       const pagamentoMetodo = document.getElementById("corridaPagamento").value;
 
-      if (!usuarioId || !origem || !destino) {
-        setResultado("corridaResultado", { ok: false, mensagem: "Preencha usuario, origem e destino" });
+      if (!passageiroId || !origem || !destino) {
+        setResultado("corridaResultado", { ok: false, mensagem: "Preencha passageiro, origem e destino" });
         return;
       }
 
@@ -700,7 +678,7 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            usuarioId,
+            passageiroId,
             origem,
             destino,
             origemLat,
@@ -721,17 +699,36 @@
     function renderMotoristaStatus() {
       const status = document.getElementById("motoristaStatus");
       const toggle = document.getElementById("motoristaToggle");
+
+      if (motoristaEmCorrida) {
+        status.textContent = "Em corrida";
+        status.classList.add("busy");
+        status.classList.remove("online");
+        toggle.textContent = "Ficar offline";
+        return;
+      }
+
       status.textContent = motoristaOnline ? "Online" : "Offline";
       status.classList.toggle("online", motoristaOnline);
+      status.classList.remove("busy");
       toggle.textContent = motoristaOnline ? "Ficar offline" : "Ficar online";
     }
 
     async function atualizarMotoristaStatus(lat, lng) {
       if (!motoristaAtual) return;
+
+      const disponivel = motoristaOnline && !motoristaEmCorrida;
+      const payload = { disponivel };
+
+      if (lat !== null && lng !== null) {
+        payload.latitude = lat;
+        payload.longitude = lng;
+      }
+
       await fetch(getApiBase() + `/motoristas/${motoristaAtual.id}/status`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disponivel: motoristaOnline, latitude: lat, longitude: lng })
+        body: JSON.stringify(payload)
       });
     }
 
@@ -741,6 +738,8 @@
         box.textContent = "Localizacao: nao definida";
         return;
       }
+      motoristaUltLat = lat;
+      motoristaUltLng = lng;
       box.textContent = `Localizacao: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
     }
 
@@ -773,7 +772,7 @@
           motoristaWatchId = null;
         }
         pararPollingCorridas();
-        await atualizarMotoristaStatus(null, null);
+        await atualizarMotoristaStatus(motoristaUltLat, motoristaUltLng);
         return;
       }
 
@@ -796,6 +795,12 @@
 
     function renderCorridasPendentes(corridas) {
       const container = document.getElementById("corridasPendentes");
+
+      if (motoristaEmCorrida) {
+        container.innerHTML = "<div class=\"ride-item\">Voce esta em corrida. Termine para receber novas.</div>";
+        return;
+      }
+
       if (!corridas || corridas.length === 0) {
         container.innerHTML = "<div class=\"ride-item\">Nenhuma corrida pendente.</div>";
         return;
@@ -811,7 +816,6 @@
               Destino: ${c.destino}<br />
               Valor: R$ ${Number(c.valor || 0).toFixed(2)}<br />
               Distancia: ${dist}<br />
-              Pagamento: ${c.pagamentoMetodo || "dinheiro"}
               <button onclick="aceitarCorrida(${c.id})">Aceitar</button>
             </div>
           `;
@@ -820,7 +824,7 @@
     }
 
     async function carregarCorridasPendentes() {
-      if (!motoristaAtual || !motoristaOnline) return;
+      if (!motoristaAtual || !motoristaOnline || motoristaEmCorrida) return;
       try {
         const resposta = await fetch(getApiBase() + `/corridas/pendentes?motoristaId=${motoristaAtual.id}`);
         const dados = await resposta.json();
@@ -868,7 +872,11 @@
         const dados = await resposta.json();
         if (dados.corrida) {
           corridaAtual = dados.corrida;
+          motoristaEmCorrida = true;
+          await atualizarMotoristaStatus(motoristaUltLat, motoristaUltLng);
+          renderMotoristaStatus();
           renderCorridaAtual();
+          renderCorridasPendentes([]);
         }
       } catch (erro) {
         setResultado("loginResultado", { ok: false, mensagem: "Falha ao aceitar", erro: String(erro) });
@@ -894,7 +902,11 @@
         const dados = await resposta.json();
         if (dados.corrida) {
           corridaAtual = null;
+          motoristaEmCorrida = false;
+          await atualizarMotoristaStatus(motoristaUltLat, motoristaUltLng);
+          renderMotoristaStatus();
           renderCorridaAtual();
+          await carregarCorridasPendentes();
         }
       } catch (erro) {
         setResultado("loginResultado", { ok: false, mensagem: "Falha ao finalizar", erro: String(erro) });
@@ -906,6 +918,8 @@
       const salvo = localStorage.getItem("apiBase");
       if (salvo) {
         apiBaseInput.value = salvo;
+      } else {
+        apiBaseInput.value = DEFAULT_API_BASE;
       }
       apiBaseInput.addEventListener("change", () => {
         localStorage.setItem("apiBase", apiBaseInput.value.trim() || DEFAULT_API_BASE);
@@ -917,7 +931,6 @@
       document.getElementById("corridaOrigemLat").addEventListener("input", atualizarEstimativa);
       document.getElementById("corridaOrigemLng").addEventListener("input", atualizarEstimativa);
 
-      toggleLoginFields();
       toggleCadastroFields();
       renderSessao();
       renderPanels();

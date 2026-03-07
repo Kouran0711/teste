@@ -1,5 +1,8 @@
 ﻿const express = require("express");
 const path = require("path");
+const crypto = require("crypto");
+const supabase = require("./supabase");
+
 const app = express();
 
 app.use(express.json());
@@ -7,14 +10,11 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 10000;
 
-// Banco falso em memoria
-let usuarios = [];
-let motoristas = [];
-let corridas = [];
+const origemCoordsPorCorrida = new Map();
 
-let proximoUsuarioId = 1;
-let proximoMotoristaId = 1;
-let proximaCorridaId = 1;
+function nowIso() {
+  return new Date().toISOString();
+}
 
 function toNumber(valor) {
   if (valor === null || valor === undefined || valor === "") {
@@ -38,11 +38,41 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-function nowIso() {
-  return new Date().toISOString();
+function hashSenha(senha) {
+  const salt = process.env.SENHA_SALT || "";
+  return crypto.createHash("sha256").update(String(senha) + salt).digest("hex");
 }
 
-// Status da API
+function sanitizeUsuario(usuario) {
+  if (!usuario) return usuario;
+  const { senha_hash, ...rest } = usuario;
+  return rest;
+}
+
+async function buscarUsuarioPorIdentificador(identificador) {
+  let { data, error } = await supabase
+    .from("usuarios")
+    .select("*")
+    .eq("telefone", identificador)
+    .maybeSingle();
+
+  if (error) {
+    return { data: null, error };
+  }
+
+  if (data) {
+    return { data, error: null };
+  }
+
+  const response = await supabase
+    .from("usuarios")
+    .select("*")
+    .eq("email", identificador)
+    .maybeSingle();
+
+  return response;
+}
+
 app.get("/status", (req, res) => {
   res.json({
     ok: true,
@@ -51,114 +81,213 @@ app.get("/status", (req, res) => {
   });
 });
 
-// Cadastro de usuario
-app.post("/usuarios", (req, res) => {
-  const { nome, telefone } = req.body;
+app.get("/usuarios", async (req, res) => {
+  const { data, error } = await supabase
+    .from("usuarios")
+    .select("id, nome, telefone, email, tipo, ativo, created_at, updated_at")
+    .order("id", { ascending: true });
 
-  if (!nome || !telefone) {
+  if (error) {
+    return res.status(500).json({ ok: false, mensagem: error.message });
+  }
+
+  res.json({ ok: true, usuarios: data || [] });
+});
+
+app.get("/motoristas", async (req, res) => {
+  const { data, error } = await supabase
+    .from("motoristas")
+    .select("id, usuario_id, carro, placa, cor, disponivel, latitude, longitude, created_at, updated_at")
+    .order("id", { ascending: true });
+
+  if (error) {
+    return res.status(500).json({ ok: false, mensagem: error.message });
+  }
+
+  res.json({ ok: true, motoristas: data || [] });
+});
+
+app.post("/auth/registrar", async (req, res) => {
+  const { tipo, nome, telefone, email, senha, carro, placa, cor } = req.body;
+  const tipoFinal = tipo === "motorista" || tipo === "admin" ? tipo : "passageiro";
+
+  if (!nome || !telefone || !senha) {
     return res.status(400).json({
       ok: false,
-      mensagem: "Nome e telefone sao obrigatorios"
+      mensagem: "Nome, telefone e senha sao obrigatorios"
     });
   }
 
-  const usuario = {
-    id: proximoUsuarioId++,
-    nome,
-    telefone
-  };
-
-  usuarios.push(usuario);
-
-  res.status(201).json({
-    ok: true,
-    mensagem: "Usuario cadastrado com sucesso",
-    usuario
-  });
-});
-
-// Listar usuarios
-app.get("/usuarios", (req, res) => {
-  res.json({
-    ok: true,
-    usuarios
-  });
-});
-
-// Cadastro de motorista
-app.post("/motoristas", (req, res) => {
-  const { nome, carro, placa, cor } = req.body;
-
-  if (!nome || !carro || !placa) {
+  if (tipoFinal === "motorista" && (!carro || !placa)) {
     return res.status(400).json({
       ok: false,
-      mensagem: "Nome, carro e placa sao obrigatorios"
+      mensagem: "Carro e placa sao obrigatorios para motorista"
     });
   }
 
-  const motorista = {
-    id: proximoMotoristaId++,
-    nome,
-    carro,
-    placa,
-    cor: cor || null,
-    disponivel: false,
-    latitude: null,
-    longitude: null
-  };
+  try {
+    const senhaHash = hashSenha(senha);
 
-  motoristas.push(motorista);
+    const { data: usuario, error: usuarioError } = await supabase
+      .from("usuarios")
+      .insert([
+        {
+          nome,
+          telefone,
+          email: email || null,
+          senha_hash: senhaHash,
+          tipo: tipoFinal,
+          ativo: true
+        }
+      ])
+      .select("*")
+      .single();
 
-  res.status(201).json({
-    ok: true,
-    mensagem: "Motorista cadastrado com sucesso",
-    motorista
-  });
+    if (usuarioError) {
+      return res.status(400).json({ ok: false, mensagem: usuarioError.message });
+    }
+
+    let motorista = null;
+
+    if (tipoFinal === "motorista") {
+      const { data: motoristaData, error: motoristaError } = await supabase
+        .from("motoristas")
+        .insert([
+          {
+            usuario_id: usuario.id,
+            carro,
+            placa,
+            cor: cor || null,
+            disponivel: false,
+            latitude: null,
+            longitude: null
+          }
+        ])
+        .select("*")
+        .single();
+
+      if (motoristaError) {
+        return res.status(400).json({ ok: false, mensagem: motoristaError.message });
+      }
+
+      motorista = motoristaData;
+    }
+
+    res.status(201).json({
+      ok: true,
+      usuario: sanitizeUsuario(usuario),
+      motorista
+    });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro no cadastro", erro: String(erro) });
+  }
 });
 
-// Listar motoristas
-app.get("/motoristas", (req, res) => {
-  res.json({
-    ok: true,
-    motoristas
-  });
+app.post("/auth/login", async (req, res) => {
+  const { identificador, senha, tipo } = req.body;
+
+  if (!identificador || !senha) {
+    return res.status(400).json({ ok: false, mensagem: "Identificador e senha sao obrigatorios" });
+  }
+
+  try {
+    const { data: usuario, error } = await buscarUsuarioPorIdentificador(identificador);
+
+    if (error) {
+      return res.status(500).json({ ok: false, mensagem: error.message });
+    }
+
+    if (!usuario) {
+      return res.status(404).json({ ok: false, mensagem: "Usuario nao encontrado" });
+    }
+
+    if (!usuario.ativo) {
+      return res.status(403).json({ ok: false, mensagem: "Usuario inativo" });
+    }
+
+    if (tipo && usuario.tipo !== tipo) {
+      return res.status(403).json({ ok: false, mensagem: "Tipo de usuario invalido" });
+    }
+
+    const senhaHash = hashSenha(senha);
+    if (usuario.senha_hash !== senhaHash) {
+      return res.status(401).json({ ok: false, mensagem: "Senha incorreta" });
+    }
+
+    let motorista = null;
+    if (usuario.tipo === "motorista") {
+      const { data: motoristaData, error: motoristaError } = await supabase
+        .from("motoristas")
+        .select("*")
+        .eq("usuario_id", usuario.id)
+        .maybeSingle();
+
+      if (motoristaError) {
+        return res.status(500).json({ ok: false, mensagem: motoristaError.message });
+      }
+
+      motorista = motoristaData;
+    }
+
+    res.json({ ok: true, usuario: sanitizeUsuario(usuario), motorista });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro no login", erro: String(erro) });
+  }
 });
 
-// Atualizar status e localizacao do motorista
-app.put("/motoristas/:id/status", (req, res) => {
+app.put("/motoristas/:id/status", async (req, res) => {
   const motoristaId = Number(req.params.id);
   const { disponivel, latitude, longitude } = req.body;
 
-  const motorista = motoristas.find((m) => m.id === motoristaId);
-
-  if (!motorista) {
-    return res.status(404).json({
-      ok: false,
-      mensagem: "Motorista nao encontrado"
-    });
+  if (!motoristaId) {
+    return res.status(400).json({ ok: false, mensagem: "motoristaId invalido" });
   }
 
-  if (typeof disponivel === "boolean") {
-    motorista.disponivel = disponivel;
-  }
+  try {
+    const updates = { updated_at: nowIso() };
 
-  const lat = toNumber(latitude);
-  const lng = toNumber(longitude);
-  if (lat !== null && lng !== null) {
-    motorista.latitude = lat;
-    motorista.longitude = lng;
-  }
+    if (typeof disponivel === "boolean") {
+      updates.disponivel = disponivel;
+    }
 
-  res.json({
-    ok: true,
-    motorista
-  });
+    const lat = toNumber(latitude);
+    const lng = toNumber(longitude);
+    if (lat !== null && lng !== null) {
+      updates.latitude = lat;
+      updates.longitude = lng;
+    }
+
+    const { data: motorista, error } = await supabase
+      .from("motoristas")
+      .update(updates)
+      .eq("id", motoristaId)
+      .select("*")
+      .single();
+
+    if (error) {
+      return res.status(400).json({ ok: false, mensagem: error.message });
+    }
+
+    if (lat !== null && lng !== null) {
+      await supabase.from("localizacao_motorista").insert([
+        {
+          motorista_id: motoristaId,
+          latitude: lat,
+          longitude: lng,
+          atualizado_em: nowIso()
+        }
+      ]);
+    }
+
+    res.json({ ok: true, motorista });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro ao atualizar motorista", erro: String(erro) });
+  }
 });
 
-// Solicitar corrida
-app.post("/corridas", (req, res) => {
+app.post("/corridas", async (req, res) => {
   const {
-    usuarioId,
+    passageiroId,
     origem,
     destino,
     origemLat,
@@ -169,248 +298,351 @@ app.post("/corridas", (req, res) => {
     pagamentoMetodo
   } = req.body;
 
-  if (!usuarioId || !origem || !destino) {
+  if (!passageiroId || !origem || !destino) {
     return res.status(400).json({
       ok: false,
-      mensagem: "usuarioId, origem e destino sao obrigatorios"
+      mensagem: "passageiroId, origem e destino sao obrigatorios"
     });
   }
 
-  const usuario = usuarios.find((u) => u.id === Number(usuarioId));
+  try {
+    const { data: usuario, error: usuarioError } = await supabase
+      .from("usuarios")
+      .select("id, tipo, ativo")
+      .eq("id", passageiroId)
+      .maybeSingle();
 
-  if (!usuario) {
-    return res.status(404).json({
-      ok: false,
-      mensagem: "Usuario nao encontrado"
+    if (usuarioError) {
+      return res.status(500).json({ ok: false, mensagem: usuarioError.message });
+    }
+
+    if (!usuario || usuario.tipo !== "passageiro") {
+      return res.status(404).json({ ok: false, mensagem: "Passageiro nao encontrado" });
+    }
+
+    if (!usuario.ativo) {
+      return res.status(403).json({ ok: false, mensagem: "Passageiro inativo" });
+    }
+
+    const oLat = toNumber(origemLat);
+    const oLng = toNumber(origemLng);
+    const dLat = toNumber(destinoLat);
+    const dLng = toNumber(destinoLng);
+    const distInformada = toNumber(distanciaKm);
+
+    let distanciaCalculada = 0;
+    if (oLat !== null && oLng !== null && dLat !== null && dLng !== null) {
+      distanciaCalculada = haversineKm(oLat, oLng, dLat, dLng);
+    } else if (distInformada !== null) {
+      distanciaCalculada = distInformada;
+    }
+
+    const distanciaFinal = Number(distanciaCalculada.toFixed(2));
+    const valorFinal = Number((distanciaFinal * 1).toFixed(2));
+
+    const metodoFinal = ["dinheiro", "cartao", "pix"].includes(pagamentoMetodo)
+      ? pagamentoMetodo
+      : "dinheiro";
+
+    const { data: corrida, error: corridaError } = await supabase
+      .from("corridas")
+      .insert([
+        {
+          passageiro_id: Number(passageiroId),
+          origem,
+          destino,
+          valor: valorFinal,
+          distancia_km: distanciaFinal,
+          status: "aguardando_motorista",
+          created_at: nowIso()
+        }
+      ])
+      .select("*")
+      .single();
+
+    if (corridaError) {
+      return res.status(400).json({ ok: false, mensagem: corridaError.message });
+    }
+
+    const { data: pagamento, error: pagamentoError } = await supabase
+      .from("pagamentos")
+      .insert([
+        {
+          corrida_id: corrida.id,
+          metodo: metodoFinal,
+          status: "pendente",
+          valor: valorFinal,
+          created_at: nowIso(),
+          updated_at: nowIso()
+        }
+      ])
+      .select("*")
+      .single();
+
+    if (pagamentoError) {
+      return res.status(400).json({ ok: false, mensagem: pagamentoError.message });
+    }
+
+    if (oLat !== null && oLng !== null) {
+      origemCoordsPorCorrida.set(corrida.id, { lat: oLat, lng: oLng });
+    }
+
+    res.status(201).json({
+      ok: true,
+      mensagem: "Corrida solicitada com sucesso",
+      corrida,
+      pagamento
     });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro ao criar corrida", erro: String(erro) });
   }
-
-  const oLat = toNumber(origemLat);
-  const oLng = toNumber(origemLng);
-  const dLat = toNumber(destinoLat);
-  const dLng = toNumber(destinoLng);
-  const distInformada = toNumber(distanciaKm);
-
-  let distanciaCalculada = 0;
-  if (oLat !== null && oLng !== null && dLat !== null && dLng !== null) {
-    distanciaCalculada = haversineKm(oLat, oLng, dLat, dLng);
-  } else if (distInformada !== null) {
-    distanciaCalculada = distInformada;
-  }
-
-  const distanciaFinal = Number(distanciaCalculada.toFixed(2));
-  const valorFinal = Number((distanciaFinal * 1).toFixed(2));
-
-  const corrida = {
-    id: proximaCorridaId++,
-    usuarioId: usuario.id,
-    motoristaId: null,
-    origem,
-    destino,
-    origemLat: oLat,
-    origemLng: oLng,
-    destinoLat: dLat,
-    destinoLng: dLng,
-    distanciaKm: distanciaFinal,
-    valor: valorFinal,
-    pagamentoMetodo: pagamentoMetodo || "dinheiro",
-    status: "aguardando_motorista",
-    criadaEm: nowIso(),
-    aceitaEm: null,
-    iniciadaEm: null,
-    finalizadaEm: null,
-    canceladaEm: null
-  };
-
-  corridas.push(corrida);
-
-  res.status(201).json({
-    ok: true,
-    mensagem: "Corrida solicitada com sucesso",
-    corrida
-  });
 });
 
-// Listar corridas
-app.get("/corridas", (req, res) => {
-  res.json({
-    ok: true,
-    corridas
-  });
-});
-
-// Listar corridas pendentes para motorista com prioridade por distancia
-app.get("/corridas/pendentes", (req, res) => {
+app.get("/corridas/pendentes", async (req, res) => {
   const motoristaId = Number(req.query.motoristaId);
 
   if (!motoristaId) {
-    return res.status(400).json({
-      ok: false,
-      mensagem: "motoristaId e obrigatorio"
-    });
+    return res.status(400).json({ ok: false, mensagem: "motoristaId e obrigatorio" });
   }
 
-  const motorista = motoristas.find((m) => m.id === motoristaId);
+  try {
+    const { data: motorista, error: motoristaError } = await supabase
+      .from("motoristas")
+      .select("id, latitude, longitude")
+      .eq("id", motoristaId)
+      .maybeSingle();
 
-  if (!motorista) {
-    return res.status(404).json({
-      ok: false,
-      mensagem: "Motorista nao encontrado"
-    });
+    if (motoristaError) {
+      return res.status(500).json({ ok: false, mensagem: motoristaError.message });
+    }
+
+    if (!motorista) {
+      return res.status(404).json({ ok: false, mensagem: "Motorista nao encontrado" });
+    }
+
+    const { data: corridas, error: corridasError } = await supabase
+      .from("corridas")
+      .select("*")
+      .eq("status", "aguardando_motorista")
+      .order("created_at", { ascending: true });
+
+    if (corridasError) {
+      return res.status(500).json({ ok: false, mensagem: corridasError.message });
+    }
+
+    const pendentes = (corridas || [])
+      .map((c) => {
+        const coords = origemCoordsPorCorrida.get(c.id);
+        const dist =
+          motorista.latitude !== null &&
+          motorista.longitude !== null &&
+          coords &&
+          coords.lat !== null &&
+          coords.lng !== null
+            ? Number(haversineKm(motorista.latitude, motorista.longitude, coords.lat, coords.lng).toFixed(2))
+            : null;
+        return { ...c, distanciaParaMotoristaKm: dist };
+      })
+      .sort((a, b) => {
+        const da = a.distanciaParaMotoristaKm ?? Number.POSITIVE_INFINITY;
+        const db = b.distanciaParaMotoristaKm ?? Number.POSITIVE_INFINITY;
+        return da - db;
+      });
+
+    res.json({ ok: true, corridas: pendentes });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro ao listar corridas", erro: String(erro) });
   }
-
-  const pendentes = corridas
-    .filter((c) => c.status === "aguardando_motorista")
-    .map((c) => {
-      const dist =
-        motorista.latitude !== null &&
-        motorista.longitude !== null &&
-        c.origemLat !== null &&
-        c.origemLng !== null
-          ? Number(haversineKm(motorista.latitude, motorista.longitude, c.origemLat, c.origemLng).toFixed(2))
-          : null;
-      return { ...c, distanciaParaMotoristaKm: dist };
-    })
-    .sort((a, b) => {
-      const da = a.distanciaParaMotoristaKm ?? Number.POSITIVE_INFINITY;
-      const db = b.distanciaParaMotoristaKm ?? Number.POSITIVE_INFINITY;
-      return da - db;
-    });
-
-  res.json({
-    ok: true,
-    corridas: pendentes
-  });
 });
 
-// Motorista aceitar corrida
-app.put("/corridas/:id/aceitar", (req, res) => {
+app.put("/corridas/:id/aceitar", async (req, res) => {
   const corridaId = Number(req.params.id);
   const { motoristaId } = req.body;
 
-  const corrida = corridas.find((c) => c.id === corridaId);
-
-  if (!corrida) {
-    return res.status(404).json({
-      ok: false,
-      mensagem: "Corrida nao encontrada"
-    });
+  if (!corridaId || !motoristaId) {
+    return res.status(400).json({ ok: false, mensagem: "corridaId e motoristaId sao obrigatorios" });
   }
 
-  if (corrida.status !== "aguardando_motorista") {
-    return res.status(400).json({
-      ok: false,
-      mensagem: "Essa corrida nao pode mais ser aceita"
-    });
+  try {
+    const { data: corrida, error: corridaError } = await supabase
+      .from("corridas")
+      .select("*")
+      .eq("id", corridaId)
+      .maybeSingle();
+
+    if (corridaError) {
+      return res.status(500).json({ ok: false, mensagem: corridaError.message });
+    }
+
+    if (!corrida) {
+      return res.status(404).json({ ok: false, mensagem: "Corrida nao encontrada" });
+    }
+
+    if (corrida.status !== "aguardando_motorista") {
+      return res.status(400).json({ ok: false, mensagem: "Essa corrida nao pode mais ser aceita" });
+    }
+
+    const { data: motorista, error: motoristaError } = await supabase
+      .from("motoristas")
+      .select("*")
+      .eq("id", motoristaId)
+      .maybeSingle();
+
+    if (motoristaError) {
+      return res.status(500).json({ ok: false, mensagem: motoristaError.message });
+    }
+
+    if (!motorista) {
+      return res.status(404).json({ ok: false, mensagem: "Motorista nao encontrado" });
+    }
+
+    if (!motorista.disponivel) {
+      return res.status(400).json({ ok: false, mensagem: "Motorista indisponivel" });
+    }
+
+    const { data: corridaAtualizada, error: updateError } = await supabase
+      .from("corridas")
+      .update({
+        motorista_id: motoristaId,
+        status: "motorista_a_caminho",
+        aceita_em: nowIso()
+      })
+      .eq("id", corridaId)
+      .select("*")
+      .single();
+
+    if (updateError) {
+      return res.status(500).json({ ok: false, mensagem: updateError.message });
+    }
+
+    await supabase
+      .from("motoristas")
+      .update({ disponivel: false, updated_at: nowIso() })
+      .eq("id", motoristaId);
+
+    origemCoordsPorCorrida.delete(corridaId);
+
+    res.json({ ok: true, mensagem: "Corrida aceita com sucesso", corrida: corridaAtualizada });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro ao aceitar corrida", erro: String(erro) });
   }
-
-  const motorista = motoristas.find((m) => m.id === Number(motoristaId));
-
-  if (!motorista) {
-    return res.status(404).json({
-      ok: false,
-      mensagem: "Motorista nao encontrado"
-    });
-  }
-
-  if (!motorista.disponivel) {
-    return res.status(400).json({
-      ok: false,
-      mensagem: "Motorista indisponivel"
-    });
-  }
-
-  corrida.motoristaId = motorista.id;
-  corrida.status = "motorista_a_caminho";
-  corrida.aceitaEm = nowIso();
-  motorista.disponivel = false;
-
-  res.json({
-    ok: true,
-    mensagem: "Corrida aceita com sucesso",
-    corrida
-  });
 });
 
-// Iniciar corrida
-app.put("/corridas/:id/iniciar", (req, res) => {
+app.put("/corridas/:id/iniciar", async (req, res) => {
   const corridaId = Number(req.params.id);
-  const corrida = corridas.find((c) => c.id === corridaId);
 
-  if (!corrida) {
-    return res.status(404).json({
-      ok: false,
-      mensagem: "Corrida nao encontrada"
-    });
+  if (!corridaId) {
+    return res.status(400).json({ ok: false, mensagem: "corridaId invalido" });
   }
 
-  if (corrida.status !== "motorista_a_caminho") {
-    return res.status(400).json({
-      ok: false,
-      mensagem: "A corrida nao pode ser iniciada agora"
-    });
+  try {
+    const { data: corrida, error } = await supabase
+      .from("corridas")
+      .select("*")
+      .eq("id", corridaId)
+      .maybeSingle();
+
+    if (error) {
+      return res.status(500).json({ ok: false, mensagem: error.message });
+    }
+
+    if (!corrida) {
+      return res.status(404).json({ ok: false, mensagem: "Corrida nao encontrada" });
+    }
+
+    if (corrida.status !== "motorista_a_caminho") {
+      return res.status(400).json({ ok: false, mensagem: "A corrida nao pode ser iniciada agora" });
+    }
+
+    const { data: atualizada, error: updateError } = await supabase
+      .from("corridas")
+      .update({ status: "em_andamento", iniciada_em: nowIso() })
+      .eq("id", corridaId)
+      .select("*")
+      .single();
+
+    if (updateError) {
+      return res.status(500).json({ ok: false, mensagem: updateError.message });
+    }
+
+    res.json({ ok: true, mensagem: "Corrida iniciada com sucesso", corrida: atualizada });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro ao iniciar corrida", erro: String(erro) });
   }
-
-  corrida.status = "em_andamento";
-  corrida.iniciadaEm = nowIso();
-
-  res.json({
-    ok: true,
-    mensagem: "Corrida iniciada com sucesso",
-    corrida
-  });
 });
 
-// Finalizar corrida
-app.put("/corridas/:id/finalizar", (req, res) => {
+app.put("/corridas/:id/finalizar", async (req, res) => {
   const corridaId = Number(req.params.id);
-  const corrida = corridas.find((c) => c.id === corridaId);
 
-  if (!corrida) {
-    return res.status(404).json({
-      ok: false,
-      mensagem: "Corrida nao encontrada"
-    });
+  if (!corridaId) {
+    return res.status(400).json({ ok: false, mensagem: "corridaId invalido" });
   }
 
-  if (corrida.status !== "em_andamento") {
-    return res.status(400).json({
-      ok: false,
-      mensagem: "A corrida nao pode ser finalizada agora"
-    });
+  try {
+    const { data: corrida, error } = await supabase
+      .from("corridas")
+      .select("*")
+      .eq("id", corridaId)
+      .maybeSingle();
+
+    if (error) {
+      return res.status(500).json({ ok: false, mensagem: error.message });
+    }
+
+    if (!corrida) {
+      return res.status(404).json({ ok: false, mensagem: "Corrida nao encontrada" });
+    }
+
+    if (corrida.status !== "em_andamento") {
+      return res.status(400).json({ ok: false, mensagem: "A corrida nao pode ser finalizada agora" });
+    }
+
+    const { data: atualizada, error: updateError } = await supabase
+      .from("corridas")
+      .update({ status: "finalizada", finalizada_em: nowIso() })
+      .eq("id", corridaId)
+      .select("*")
+      .single();
+
+    if (updateError) {
+      return res.status(500).json({ ok: false, mensagem: updateError.message });
+    }
+
+    if (corrida.motorista_id) {
+      await supabase
+        .from("motoristas")
+        .update({ disponivel: true, updated_at: nowIso() })
+        .eq("id", corrida.motorista_id);
+    }
+
+    res.json({ ok: true, mensagem: "Corrida finalizada com sucesso", corrida: atualizada });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro ao finalizar corrida", erro: String(erro) });
   }
-
-  corrida.status = "finalizada";
-  corrida.finalizadaEm = nowIso();
-
-  const motorista = motoristas.find((m) => m.id === corrida.motoristaId);
-  if (motorista) {
-    motorista.disponivel = true;
-  }
-
-  res.json({
-    ok: true,
-    mensagem: "Corrida finalizada com sucesso",
-    corrida
-  });
 });
 
-// Buscar corrida por ID
-app.get("/corridas/:id", (req, res) => {
+app.get("/corridas/:id", async (req, res) => {
   const corridaId = Number(req.params.id);
-  const corrida = corridas.find((c) => c.id === corridaId);
 
-  if (!corrida) {
-    return res.status(404).json({
-      ok: false,
-      mensagem: "Corrida nao encontrada"
-    });
+  if (!corridaId) {
+    return res.status(400).json({ ok: false, mensagem: "corridaId invalido" });
   }
 
-  res.json({
-    ok: true,
-    corrida
-  });
+  const { data, error } = await supabase
+    .from("corridas")
+    .select("*")
+    .eq("id", corridaId)
+    .maybeSingle();
+
+  if (error) {
+    return res.status(500).json({ ok: false, mensagem: error.message });
+  }
+
+  if (!data) {
+    return res.status(404).json({ ok: false, mensagem: "Corrida nao encontrada" });
+  }
+
+  res.json({ ok: true, corrida: data });
 });
 
 app.listen(PORT, () => {
