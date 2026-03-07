@@ -38,6 +38,10 @@
         <h2>Pedir corrida</h2>
         <p>Digite os enderecos e escolha a forma de pagamento.</p>
         <div id="passengerMessage" class="message"></div>
+        <div id="passengerWaiting" class="waiting-box hidden">
+          <div class="status-pill online" id="passengerWaitingText">Aguardando motorista...</div>
+          <button class="button secondary" type="button" id="cancelRideBtn">Cancelar solicitacao</button>
+        </div>
 
         <div class="form-field autocomplete">
           <label for="origemInput">Origem</label>
@@ -74,6 +78,7 @@
         <div class="status-pill" id="driverStatus">Offline</div>
         <button class="button" type="button" id="driverToggle">Ficar online</button>
         <div class="muted" id="driverLocation">Localizacao: nao definida</div>
+        <button class="button secondary" type="button" id="drawerLogout">Sair</button>
         <div style="margin-top: 16px;">
           <h3>Corrida atual</h3>
           <div class="ride-item" id="currentRide">Nenhuma corrida aceita.</div>
@@ -139,6 +144,7 @@
     const driverControls = document.getElementById("driverControls");
     const driverStatusTop = document.getElementById("driverStatusTop");
     const driverToggleTop = document.getElementById("driverToggleTop");
+    const drawerLogout = document.getElementById("drawerLogout");
     const passengerPanel = document.getElementById("passengerPanel");
     const driverPanel = document.getElementById("driverPanel");
     const passengerMapEl = document.getElementById("passengerMap");
@@ -147,6 +153,9 @@
 
     const passengerMessage = document.getElementById("passengerMessage");
     const driverMessage = document.getElementById("driverMessage");
+    const passengerWaitingBox = document.getElementById("passengerWaiting");
+    const passengerWaitingText = document.getElementById("passengerWaitingText");
+    const cancelRideBtn = document.getElementById("cancelRideBtn");
 
     const origemInput = document.getElementById("origemInput");
     const destinoInput = document.getElementById("destinoInput");
@@ -185,6 +194,8 @@
     let passengerOriginMode = "auto";
     let passengerLastRouteUpdate = 0;
     let passengerAutoLabel = "";
+    let passengerWaiting = false;
+    let passengerActiveRideId = null;
 
     let driverMap = null;
     let driverMarker = null;
@@ -202,6 +213,7 @@
     let lastRouteUpdate = 0;
     let audioContext = null;
     let driverMapReady = false;
+    let driverRetryTimeout = null;
     let rideModalMap = null;
     let rideModalDriverMarker = null;
     let rideModalPickupMarker = null;
@@ -264,6 +276,60 @@
       }
     }
 
+    function setPassengerFormEnabled(enabled) {
+      const elements = [
+        origemInput,
+        destinoInput,
+        pagamentoSelect,
+        solicitarCorridaBtn,
+        usarLocalizacaoBtn
+      ];
+      elements.forEach((el) => {
+        if (!el) return;
+        el.disabled = !enabled;
+      });
+    }
+
+    function setPassengerWaiting(ride) {
+      passengerWaiting = true;
+      passengerActiveRideId = ride?.id || null;
+      if (passengerActiveRideId) {
+        localStorage.setItem("passageiroCorridaAtiva", JSON.stringify({ id: passengerActiveRideId }));
+      }
+      passengerWaitingText.textContent = passengerActiveRideId
+        ? `Aguardando motorista... Corrida #${passengerActiveRideId}`
+        : "Aguardando motorista...";
+      passengerWaitingBox.classList.remove("hidden");
+      setPassengerFormEnabled(false);
+    }
+
+    function clearPassengerWaiting() {
+      passengerWaiting = false;
+      passengerActiveRideId = null;
+      localStorage.removeItem("passageiroCorridaAtiva");
+      passengerWaitingBox.classList.add("hidden");
+      setPassengerFormEnabled(true);
+    }
+
+    async function loadPassengerActiveRide() {
+      const stored = localStorage.getItem("passageiroCorridaAtiva");
+      if (!stored) return;
+      try {
+        const parsed = JSON.parse(stored);
+        const id = parsed?.id;
+        if (!id) return;
+        const resposta = await fetch(API_BASE + `/corridas/${id}`);
+        const dados = await resposta.json();
+        if (dados.ok && dados.corrida && dados.corrida.status === "aguardando_motorista") {
+          setPassengerWaiting(dados.corrida);
+        } else {
+          clearPassengerWaiting();
+        }
+      } catch (erro) {
+        clearPassengerWaiting();
+      }
+    }
+
     function setMenuOpen(open) {
       document.body.classList.toggle("menu-open", open);
     }
@@ -272,10 +338,13 @@
     menuClose?.addEventListener("click", () => setMenuOpen(false));
     menuOverlay?.addEventListener("click", () => setMenuOpen(false));
 
-    logoutBtn.addEventListener("click", () => {
+    function handleLogout() {
       localStorage.removeItem("corridaSession");
       window.location.href = "/index.html";
-    });
+    }
+
+    logoutBtn.addEventListener("click", handleLogout);
+    drawerLogout?.addEventListener("click", handleLogout);
 
     function ensureMapbox() {
       if (!MAPBOX_TOKEN) {
@@ -454,10 +523,26 @@
     }
 
     function geolocationErrorMessage() {
+      return "Nao foi possivel obter localizacao. Verifique a permissao do navegador e se o GPS esta ativo.";
+    }
+
+    function geolocationErrorMessageWithDetail(error) {
       if (!window.isSecureContext && window.location.hostname !== "localhost") {
         return "A localizacao exige HTTPS ou localhost. Verifique o acesso do navegador.";
       }
-      return "Nao foi possivel obter localizacao. Verifique a permissao do navegador e se o GPS esta ativo.";
+      if (!error) {
+        return geolocationErrorMessage();
+      }
+      if (error.code === 1) {
+        return "Permissao de localizacao negada. Ative nas configuracoes do navegador.";
+      }
+      if (error.code === 2) {
+        return "Localizacao indisponivel no momento. Verifique o GPS ou sinal.";
+      }
+      if (error.code === 3) {
+        return "Tempo esgotado ao obter localizacao. Tente novamente.";
+      }
+      return geolocationErrorMessage();
     }
 
     function updatePassengerMarkers() {
@@ -534,10 +619,10 @@
             passengerMap.setZoom(15);
           }
         },
-        () => {
-          showMessage(passengerMessage, "error", geolocationErrorMessage());
+        (error) => {
+          showMessage(passengerMessage, "error", geolocationErrorMessageWithDetail(error));
         },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 }
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
       );
     }
 
@@ -875,15 +960,19 @@
           }
           updatePassengerRoute();
         },
-        () => {
-          showMessage(passengerMessage, "error", geolocationErrorMessage());
+        (error) => {
+          showMessage(passengerMessage, "error", geolocationErrorMessageWithDetail(error));
         },
-        { enableHighAccuracy: true, timeout: 8000 }
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
       );
     });
 
     solicitarCorridaBtn.addEventListener("click", async () => {
       clearMessage(passengerMessage);
+      if (passengerWaiting) {
+        showMessage(passengerMessage, "error", "Voce ja tem uma corrida aguardando motorista.");
+        return;
+      }
       let origemTexto = origemInput.value.trim();
       let destinoTexto = destinoInput.value.trim();
 
@@ -941,10 +1030,64 @@
         }
 
         showMessage(passengerMessage, "success", "Corrida solicitada! Aguardando motorista.");
+        setPassengerWaiting(dados.corrida);
       } catch (erro) {
         showMessage(passengerMessage, "error", "Nao foi possivel solicitar a corrida.");
       }
     });
+
+    cancelRideBtn?.addEventListener("click", async () => {
+      if (!passengerActiveRideId) return;
+      clearMessage(passengerMessage);
+      try {
+        const resposta = await fetch(API_BASE + `/corridas/${passengerActiveRideId}/cancelar`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ passageiroId: usuario.id })
+        });
+        const dados = await resposta.json();
+        if (!dados.ok) {
+          showMessage(passengerMessage, "error", dados.mensagem || "Nao foi possivel cancelar.");
+          return;
+        }
+        clearPassengerWaiting();
+        showMessage(passengerMessage, "success", "Corrida cancelada.");
+      } catch (erro) {
+        showMessage(passengerMessage, "error", "Nao foi possivel cancelar.");
+      }
+    });
+
+    function startDriverWatch() {
+      if (driverWatchId !== null) return;
+      driverWatchId = navigator.geolocation.watchPosition(
+        async (pos) => {
+          driverPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          updateDriverLocationDisplay();
+          updateDriverMarkers();
+          await atualizarMotoristaStatus();
+          updateDriverRoute(false);
+          updateRideModalRoute(false);
+          await carregarCorridasPendentes();
+        },
+        (error) => {
+          showMessage(driverMessage, "error", geolocationErrorMessageWithDetail(error));
+          driverLocation.textContent = "Localizacao: permissao pendente";
+          if (driverWatchId !== null) {
+            navigator.geolocation.clearWatch(driverWatchId);
+            driverWatchId = null;
+          }
+          if (driverOnline && !driverRetryTimeout) {
+            driverRetryTimeout = setTimeout(() => {
+              driverRetryTimeout = null;
+              if (driverOnline) {
+                startDriverWatch();
+              }
+            }, 6000);
+          }
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
+      );
+    }
 
     async function toggleDriverOnline() {
       clearMessage(driverMessage);
@@ -963,6 +1106,10 @@
           navigator.geolocation.clearWatch(driverWatchId);
           driverWatchId = null;
         }
+        if (driverRetryTimeout) {
+          clearTimeout(driverRetryTimeout);
+          driverRetryTimeout = null;
+        }
         clearInterval(pendingPoll);
         pendingPoll = null;
         pendingIds = new Set();
@@ -973,23 +1120,23 @@
 
       await atualizarMotoristaStatus();
       pendingIds = new Set();
-      driverWatchId = navigator.geolocation.watchPosition(
+      navigator.geolocation.getCurrentPosition(
         async (pos) => {
           driverPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
           updateDriverLocationDisplay();
           updateDriverMarkers();
           await atualizarMotoristaStatus();
-          updateDriverRoute(false);
-          updateRideModalRoute(false);
-          await carregarCorridasPendentes();
+          updateDriverRoute(true);
+          updateRideModalRoute(true);
         },
-        () => {
-          showMessage(driverMessage, "error", geolocationErrorMessage());
-          driverOnline = false;
-          updateDriverStatus();
+        (error) => {
+          showMessage(driverMessage, "error", geolocationErrorMessageWithDetail(error));
+          driverLocation.textContent = "Localizacao: permissao pendente";
         },
-        { enableHighAccuracy: true, timeout: 8000 }
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
       );
+
+      startDriverWatch();
 
       pendingPoll = setInterval(carregarCorridasPendentes, 6000);
     }
@@ -1104,6 +1251,7 @@
         menuToggle?.classList.add("hidden");
         driverControls?.classList.add("hidden");
         initPassengerMap();
+        loadPassengerActiveRide();
       } else {
         document.body.classList.add("driver-mode");
         menuToggle?.classList.remove("hidden");
