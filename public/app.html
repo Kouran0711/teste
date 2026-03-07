@@ -145,6 +145,10 @@
       </div>
       <div class="modal-body">
         <div class="form-field">
+          <label for="cancelReasonPreset">Motivo</label>
+          <select id="cancelReasonPreset"></select>
+        </div>
+        <div class="form-field">
           <label for="cancelReason">Motivo do cancelamento</label>
           <textarea id="cancelReason" placeholder="Explique rapidamente o motivo"></textarea>
         </div>
@@ -234,6 +238,7 @@
     const cancelModalClose = document.getElementById("cancelModalClose");
     const cancelModalDismiss = document.getElementById("cancelModalDismiss");
     const cancelModalConfirm = document.getElementById("cancelModalConfirm");
+    const cancelReasonPreset = document.getElementById("cancelReasonPreset");
     const cancelReason = document.getElementById("cancelReason");
 
     let passengerMap = null;
@@ -1278,8 +1283,32 @@
     function openCancelModal(tipo, corridaId) {
       if (!cancelModal) return;
       cancelContext = { tipo, corridaId };
+      const presetsMotorista = [
+        { value: "cliente_nao_apareceu", label: "Cliente nao apareceu" },
+        { value: "endereco_incorreto", label: "Endereco incorreto" },
+        { value: "rota_inviavel", label: "Transito ou rota inviavel" },
+        { value: "problema_veiculo", label: "Problema no veiculo" },
+        { value: "seguranca", label: "Seguranca" },
+        { value: "outro", label: "Outro" }
+      ];
+      const presetsPassageiro = [
+        { value: "mudanca_planos", label: "Mudanca de planos" },
+        { value: "motorista_demorando", label: "Motorista demorando" },
+        { value: "endereco_errado", label: "Endereco errado" },
+        { value: "preco_alto", label: "Preco alto" },
+        { value: "seguranca", label: "Seguranca" },
+        { value: "outro", label: "Outro" }
+      ];
+      if (cancelReasonPreset) {
+        const lista = tipo === "motorista" ? presetsMotorista : presetsPassageiro;
+        cancelReasonPreset.innerHTML = lista
+          .map((item) => `<option value="${item.value}">${item.label}</option>`)
+          .join("");
+        cancelReasonPreset.value = lista[0].value;
+      }
       if (cancelReason) {
         cancelReason.value = "";
+        cancelReason.classList.add("hidden");
       }
       if (cancelModalMeta) {
         cancelModalMeta.textContent =
@@ -1588,9 +1617,28 @@
 
     cancelModalClose?.addEventListener("click", closeCancelModal);
     cancelModalDismiss?.addEventListener("click", closeCancelModal);
+    cancelReasonPreset?.addEventListener("change", () => {
+      if (!cancelReasonPreset || !cancelReason) return;
+      if (cancelReasonPreset.value === "outro") {
+        cancelReason.classList.remove("hidden");
+      } else {
+        cancelReason.classList.add("hidden");
+        cancelReason.value = "";
+      }
+    });
     cancelModalConfirm?.addEventListener("click", async () => {
       if (!cancelContext) return;
-      const motivo = cancelReason?.value.trim() || "";
+      let motivo = "";
+      if (cancelReasonPreset) {
+        const selected = cancelReasonPreset.options[cancelReasonPreset.selectedIndex];
+        motivo = selected ? selected.textContent.trim() : "";
+        if (cancelReasonPreset.value === "outro") {
+          const texto = cancelReason?.value.trim();
+          motivo = texto || "Outro";
+        }
+      } else {
+        motivo = cancelReason?.value.trim() || "";
+      }
       if (cancelContext.tipo === "motorista") {
         await executarCancelamentoMotorista(motivo);
       } else {
