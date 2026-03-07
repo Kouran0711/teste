@@ -788,6 +788,7 @@
         return;
       }
 
+      await atualizarMotoristaStatus();
       pendingIds = new Set();
       driverWatchId = navigator.geolocation.watchPosition(
         async (pos) => {
@@ -800,6 +801,8 @@
         },
         () => {
           showMessage(driverMessage, "error", "Nao foi possivel obter localizacao.");
+          driverOnline = false;
+          updateDriverStatus();
         },
         { enableHighAccuracy: true, timeout: 8000 }
       );
