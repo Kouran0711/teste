@@ -124,8 +124,21 @@ a:hover {
   background: #fff;
 }
 
+.form-field textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  resize: vertical;
+}
+
 .form-field input:focus,
-.form-field select:focus {
+.form-field select:focus,
+.form-field textarea:focus {
   outline: none;
   border-color: #111111;
   box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.12);

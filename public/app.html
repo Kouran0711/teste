@@ -134,6 +134,28 @@
     </div>
   </div>
 
+  <div class="modal-backdrop hidden" id="cancelModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <h3>Cancelar corrida</h3>
+          <p id="cancelModalMeta" class="muted">Confirme o cancelamento e informe o motivo.</p>
+        </div>
+        <button class="icon-button" id="cancelModalClose" aria-label="Fechar modal">X</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-field">
+          <label for="cancelReason">Motivo do cancelamento</label>
+          <textarea id="cancelReason" placeholder="Explique rapidamente o motivo"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="button" type="button" id="cancelModalConfirm">Confirmar cancelamento</button>
+          <button class="button secondary" type="button" id="cancelModalDismiss">Voltar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.js"></script>
   <script>
     const API_BASE = window.location.origin && window.location.origin.startsWith("http")
@@ -207,6 +229,13 @@
     const rideModalDismiss = document.getElementById("rideModalDismiss");
     const rideModalAccept = document.getElementById("rideModalAccept");
 
+    const cancelModal = document.getElementById("cancelModal");
+    const cancelModalMeta = document.getElementById("cancelModalMeta");
+    const cancelModalClose = document.getElementById("cancelModalClose");
+    const cancelModalDismiss = document.getElementById("cancelModalDismiss");
+    const cancelModalConfirm = document.getElementById("cancelModalConfirm");
+    const cancelReason = document.getElementById("cancelReason");
+
     let passengerMap = null;
     let passengerOriginMarker = null;
     let passengerDestinationMarker = null;
@@ -245,6 +274,7 @@
     let driverMapReady = false;
     let rideModalRide = null;
     let rideModalOpen = false;
+    let cancelContext = null;
     let driverGpsEnabled = false;
     let driverWatchId = null;
     let driverRidePoll = null;
@@ -1245,6 +1275,30 @@
       }
     }
 
+    function openCancelModal(tipo, corridaId) {
+      if (!cancelModal) return;
+      cancelContext = { tipo, corridaId };
+      if (cancelReason) {
+        cancelReason.value = "";
+      }
+      if (cancelModalMeta) {
+        cancelModalMeta.textContent =
+          tipo === "motorista"
+            ? "Confirme o cancelamento. O passageiro sera avisado."
+            : "Confirme o cancelamento. O motorista sera avisado.";
+      }
+      document.body.classList.add("modal-open");
+      cancelModal.classList.remove("hidden");
+    }
+
+    function closeCancelModal() {
+      cancelContext = null;
+      if (cancelModal) {
+        cancelModal.classList.add("hidden");
+      }
+      document.body.classList.remove("modal-open");
+    }
+
     async function carregarCorridasPendentes() {
       if (!motorista || !driverOnline || driverInRide) return;
 
@@ -1410,14 +1464,14 @@
       }
     });
 
-    cancelRideBtn?.addEventListener("click", async () => {
+    async function executarCancelamentoPassageiro(motivo) {
       if (!passengerActiveRideId) return;
       clearMessage(passengerMessage);
       try {
         const resposta = await fetch(API_BASE + `/corridas/${passengerActiveRideId}/cancelar`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ passageiroId: usuario.id })
+          body: JSON.stringify({ passageiroId: usuario.id, motivo })
         });
         const dados = await resposta.json();
         if (!dados.ok) {
@@ -1429,6 +1483,11 @@
       } catch (erro) {
         showMessage(passengerMessage, "error", "Nao foi possivel cancelar.");
       }
+    }
+
+    cancelRideBtn?.addEventListener("click", () => {
+      if (!passengerActiveRideId) return;
+      openCancelModal("passageiro", passengerActiveRideId);
     });
 
     async function toggleDriverOnline() {
@@ -1525,6 +1584,19 @@
         window.aceitarCorrida(rideModalRide.id);
       }
       closeRideModal();
+    });
+
+    cancelModalClose?.addEventListener("click", closeCancelModal);
+    cancelModalDismiss?.addEventListener("click", closeCancelModal);
+    cancelModalConfirm?.addEventListener("click", async () => {
+      if (!cancelContext) return;
+      const motivo = cancelReason?.value.trim() || "";
+      if (cancelContext.tipo === "motorista") {
+        await executarCancelamentoMotorista(motivo);
+      } else {
+        await executarCancelamentoPassageiro(motivo);
+      }
+      closeCancelModal();
     });
 
     window.aceitarCorrida = async function (id) {
@@ -1649,7 +1721,7 @@
       }
     };
 
-    window.cancelarCorridaMotorista = async function () {
+    async function executarCancelamentoMotorista(motivo) {
       if (!currentRide || !motorista) return;
       clearMessage(driverMessage);
 
@@ -1657,7 +1729,7 @@
         const resposta = await fetch(API_BASE + `/corridas/${currentRide.id}/cancelar-motorista`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ motoristaId: motorista.id })
+          body: JSON.stringify({ motoristaId: motorista.id, motivo })
         });
         const dados = await resposta.json();
 
@@ -1669,11 +1741,16 @@
         resetDriverRide("Corrida cancelada.", "success");
         await atualizarMotoristaStatus();
         await carregarCorridasPendentes();
-      updateDriverInstruction();
-    } catch (erro) {
-      showMessage(driverMessage, "error", "Nao foi possivel cancelar.");
+        updateDriverInstruction();
+      } catch (erro) {
+        showMessage(driverMessage, "error", "Nao foi possivel cancelar.");
+      }
     }
-  };
+
+    window.cancelarCorridaMotorista = function () {
+      if (!currentRide) return;
+      openCancelModal("motorista", currentRide.id);
+    };
 
     function initApp() {
       updateUserSummary();
