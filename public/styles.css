@@ -349,7 +349,7 @@ body.driver-mode .waiting-box {
   left: 50%;
   bottom: 16px;
   transform: translateX(-50%);
-  z-index: 6;
+  z-index: 12;
   width: min(520px, calc(100% - 24px));
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--border);
@@ -641,10 +641,19 @@ body.driver-mode #logoutBtn {
   }
 
   .driver-action-bar {
+    position: fixed;
     left: 10px;
     right: 10px;
     width: auto;
     transform: none;
-    bottom: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .driver-action-buttons {
+    grid-template-columns: 1fr;
+  }
+
+  .driver-action-bar .button {
+    width: 100%;
   }
 }
