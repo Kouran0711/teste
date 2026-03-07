@@ -10,7 +10,7 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 10000;
 
-const origemCoordsPorCorrida = new Map();
+const coordsPorCorrida = new Map();
 
 function nowIso() {
   return new Date().toISOString();
@@ -36,6 +36,21 @@ function haversineKm(lat1, lon1, lat2, lon2) {
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+function attachCoords(corrida) {
+  if (!corrida) return corrida;
+  const coords = coordsPorCorrida.get(corrida.id);
+  if (!coords) {
+    return corrida;
+  }
+  return {
+    ...corrida,
+    origemLat: coords.origemLat ?? null,
+    origemLng: coords.origemLng ?? null,
+    destinoLat: coords.destinoLat ?? null,
+    destinoLng: coords.destinoLng ?? null
+  };
 }
 
 function hashSenha(senha) {
@@ -330,14 +345,15 @@ app.post("/corridas", async (req, res) => {
     const dLng = toNumber(destinoLng);
     const distInformada = toNumber(distanciaKm);
 
-    let distanciaCalculada = 0;
-    if (oLat !== null && oLng !== null && dLat !== null && dLng !== null) {
+    let distanciaCalculada = distInformada;
+    if (distanciaCalculada === null && oLat !== null && oLng !== null && dLat !== null && dLng !== null) {
       distanciaCalculada = haversineKm(oLat, oLng, dLat, dLng);
-    } else if (distInformada !== null) {
-      distanciaCalculada = distInformada;
+    }
+    if (distanciaCalculada === null) {
+      distanciaCalculada = 0;
     }
 
-    const distanciaFinal = Number(distanciaCalculada.toFixed(2));
+    const distanciaFinal = Number(Number(distanciaCalculada).toFixed(2));
     const valorFinal = Number((distanciaFinal * 1).toFixed(2));
 
     const metodoFinal = ["dinheiro", "cartao", "pix"].includes(pagamentoMetodo)
@@ -384,13 +400,18 @@ app.post("/corridas", async (req, res) => {
     }
 
     if (oLat !== null && oLng !== null) {
-      origemCoordsPorCorrida.set(corrida.id, { lat: oLat, lng: oLng });
+      coordsPorCorrida.set(corrida.id, {
+        origemLat: oLat,
+        origemLng: oLng,
+        destinoLat: dLat,
+        destinoLng: dLng
+      });
     }
 
     res.status(201).json({
       ok: true,
       mensagem: "Corrida solicitada com sucesso",
-      corrida,
+      corrida: attachCoords(corrida),
       pagamento
     });
   } catch (erro) {
@@ -432,16 +453,16 @@ app.get("/corridas/pendentes", async (req, res) => {
 
     const pendentes = (corridas || [])
       .map((c) => {
-        const coords = origemCoordsPorCorrida.get(c.id);
+        const coords = coordsPorCorrida.get(c.id);
         const dist =
           motorista.latitude !== null &&
           motorista.longitude !== null &&
           coords &&
-          coords.lat !== null &&
-          coords.lng !== null
-            ? Number(haversineKm(motorista.latitude, motorista.longitude, coords.lat, coords.lng).toFixed(2))
+          coords.origemLat !== null &&
+          coords.origemLng !== null
+            ? Number(haversineKm(motorista.latitude, motorista.longitude, coords.origemLat, coords.origemLng).toFixed(2))
             : null;
-        return { ...c, distanciaParaMotoristaKm: dist };
+        return { ...attachCoords(c), distanciaParaMotoristaKm: dist };
       })
       .sort((a, b) => {
         const da = a.distanciaParaMotoristaKm ?? Number.POSITIVE_INFINITY;
@@ -520,9 +541,7 @@ app.put("/corridas/:id/aceitar", async (req, res) => {
       .update({ disponivel: false, updated_at: nowIso() })
       .eq("id", motoristaId);
 
-    origemCoordsPorCorrida.delete(corridaId);
-
-    res.json({ ok: true, mensagem: "Corrida aceita com sucesso", corrida: corridaAtualizada });
+    res.json({ ok: true, mensagem: "Corrida aceita com sucesso", corrida: attachCoords(corridaAtualizada) });
   } catch (erro) {
     res.status(500).json({ ok: false, mensagem: "Erro ao aceitar corrida", erro: String(erro) });
   }
@@ -565,7 +584,7 @@ app.put("/corridas/:id/iniciar", async (req, res) => {
       return res.status(500).json({ ok: false, mensagem: updateError.message });
     }
 
-    res.json({ ok: true, mensagem: "Corrida iniciada com sucesso", corrida: atualizada });
+    res.json({ ok: true, mensagem: "Corrida iniciada com sucesso", corrida: attachCoords(atualizada) });
   } catch (erro) {
     res.status(500).json({ ok: false, mensagem: "Erro ao iniciar corrida", erro: String(erro) });
   }
@@ -615,7 +634,9 @@ app.put("/corridas/:id/finalizar", async (req, res) => {
         .eq("id", corrida.motorista_id);
     }
 
-    res.json({ ok: true, mensagem: "Corrida finalizada com sucesso", corrida: atualizada });
+    coordsPorCorrida.delete(corridaId);
+
+    res.json({ ok: true, mensagem: "Corrida finalizada com sucesso", corrida: attachCoords(atualizada) });
   } catch (erro) {
     res.status(500).json({ ok: false, mensagem: "Erro ao finalizar corrida", erro: String(erro) });
   }
@@ -642,7 +663,7 @@ app.get("/corridas/:id", async (req, res) => {
     return res.status(404).json({ ok: false, mensagem: "Corrida nao encontrada" });
   }
 
-  res.json({ ok: true, corrida: data });
+  res.json({ ok: true, corrida: attachCoords(data) });
 });
 
 app.listen(PORT, () => {

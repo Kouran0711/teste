@@ -3,940 +3,108 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Corrida Simples</title>
+  <title>Corrida Simples | Login</title>
+  <link rel="stylesheet" href="/styles.css">
   <link
     rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""
-  />
-  <style>
-    @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap");
-
-    :root {
-      --bg1: #fef6e4;
-      --bg2: #d3f4ff;
-      --card: #ffffff;
-      --text: #1f2933;
-      --muted: #52606d;
-      --accent: #0e7c86;
-      --accent-dark: #0b5c63;
-      --border: #d9e2ec;
-      --shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
-      --chip: #e0f2f1;
-      --chip-text: #0f766e;
-      --warning: #fef3c7;
-      --warning-text: #92400e;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      font-family: "Space Grotesk", "Trebuchet MS", sans-serif;
-      color: var(--text);
-      background: linear-gradient(135deg, var(--bg1), var(--bg2));
-      min-height: 100vh;
-    }
-
-    body::before {
-      content: "";
-      position: fixed;
-      inset: -20% -10%;
-      background:
-        radial-gradient(circle at 20% 20%, rgba(14, 124, 134, 0.18), transparent 50%),
-        radial-gradient(circle at 80% 10%, rgba(242, 153, 74, 0.18), transparent 45%),
-        radial-gradient(circle at 70% 80%, rgba(79, 70, 229, 0.12), transparent 50%);
-      z-index: -1;
-    }
-
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 40px 20px 60px;
-    }
-
-    header {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 20px;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .brand {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .brand h1 {
-      margin: 0;
-      font-size: 30px;
-      letter-spacing: 0.02em;
-    }
-
-    .brand p {
-      margin: 0;
-      color: var(--muted);
-    }
-
-    .api-box {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: rgba(255, 255, 255, 0.7);
-      border: 1px solid var(--border);
-      padding: 10px 12px;
-      border-radius: 14px;
-      box-shadow: var(--shadow);
-    }
-
-    .api-box label {
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    .api-box input {
-      width: 260px;
-      min-width: 200px;
-      border: 1px solid var(--border);
-      padding: 8px 10px;
-      border-radius: 10px;
-    }
-
-    .hero {
-      margin-top: 24px;
-      display: grid;
-      gap: 18px;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    }
-
-    .card {
-      background: var(--card);
-      border-radius: 18px;
-      padding: 20px;
-      box-shadow: var(--shadow);
-      border: 1px solid var(--border);
-      animation: floatIn 0.6s ease both;
-    }
-
-    .card h2 {
-      margin: 0 0 6px;
-      font-size: 20px;
-    }
-
-    .card p {
-      margin: 0 0 16px;
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    .grid {
-      margin-top: 24px;
-      display: grid;
-      gap: 20px;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    }
-
-    label {
-      display: block;
-      font-size: 11px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin: 10px 0 6px;
-    }
-
-    input,
-    select {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      background: #fff;
-      font-size: 14px;
-    }
-
-    button {
-      width: 100%;
-      padding: 10px 12px;
-      margin-top: 14px;
-      background: var(--accent);
-      color: white;
-      border: none;
-      border-radius: 10px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: transform 0.15s ease, background 0.15s ease;
-    }
-
-    button.secondary {
-      background: #ffffff;
-      color: var(--accent);
-      border: 1px solid var(--accent);
-    }
-
-    button:hover {
-      background: var(--accent-dark);
-      transform: translateY(-1px);
-    }
-
-    button.secondary:hover {
-      background: #f0fdfa;
-    }
-
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: var(--chip);
-      color: var(--chip-text);
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .note {
-      background: var(--warning);
-      color: var(--warning-text);
-      padding: 10px 12px;
-      border-radius: 12px;
-      font-size: 13px;
-      margin-top: 10px;
-    }
-
-    .map {
-      height: 220px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      overflow: hidden;
-    }
-
-    .status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 12px;
-      border-radius: 999px;
-      font-size: 12px;
-      background: #e2e8f0;
-      color: #334155;
-      font-weight: 600;
-    }
-
-    .status-pill.online {
-      background: #dcfce7;
-      color: #166534;
-    }
-
-    .status-pill.busy {
-      background: #fee2e2;
-      color: #991b1b;
-    }
-
-    .hidden {
-      display: none;
-    }
-
-    .rides {
-      display: grid;
-      gap: 12px;
-      margin-top: 12px;
-    }
-
-    .ride-item {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px;
-      background: #f8fafc;
-      font-size: 13px;
-    }
-
-    .ride-item strong {
-      display: block;
-      margin-bottom: 4px;
-    }
-
-    pre {
-      background: #f3f5f7;
-      padding: 12px;
-      margin-top: 12px;
-      border-radius: 12px;
-      font-size: 12px;
-      max-height: 220px;
-      overflow: auto;
-    }
-
-    @keyframes floatIn {
-      from {
-        opacity: 0;
-        transform: translateY(12px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    @media (max-width: 720px) {
-      .api-box {
-        width: 100%;
-      }
-
-      .api-box input {
-        width: 100%;
-      }
-    }
-  </style>
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
+  >
 </head>
-
 <body>
-  <div class="container">
-    <header>
-      <div class="brand">
-        <h1>Corrida Simples</h1>
-        <p>Fluxo completo alinhado com seu banco (usuarios, motoristas, corridas e pagamentos).</p>
-        <div class="chip" id="sessaoStatus">Sem sessao ativa</div>
+  <div class="page">
+    <div class="auth-layout">
+      <div class="auth-brand">
+        <div class="badge">Corrida Simples</div>
+        <h1>Bem-vindo de volta</h1>
+        <p>Entre para chamar corridas ou receber chamadas como motorista, tudo em um painel simples e direto.</p>
+        <p class="muted">Tarifa fixa de R$ 1,00 por km, com prioridade para motoristas mais proximos.</p>
       </div>
-      <div class="api-box">
-        <label for="apiBase">API base</label>
-        <input id="apiBase" value="" />
-      </div>
-    </header>
 
-    <section class="hero">
       <div class="card">
-        <h2>Obrigado por testar</h2>
-        <p>Esta pagina ja abre com o painel de login e as acoes principais do app.</p>
-        <div class="note">Tarifa: R$ 1,00 por km. Valor calculado automaticamente.</div>
+        <h2>Entrar</h2>
+        <p>Use seu telefone ou email e senha.</p>
+        <div id="loginMessage" class="message"></div>
+        <form id="loginForm">
+          <div class="form-field">
+            <label for="loginIdentificador">Telefone ou email</label>
+            <input id="loginIdentificador" placeholder="11999990000 ou email@dominio.com" required>
+          </div>
+          <div class="form-field">
+            <label for="loginSenha">Senha</label>
+            <input id="loginSenha" type="password" placeholder="Sua senha" required>
+          </div>
+          <div class="form-field">
+            <label>Entrar como</label>
+            <div class="toggle-group">
+              <input type="radio" id="tipoPassageiro" name="tipo" value="passageiro" checked>
+              <label for="tipoPassageiro">Passageiro</label>
+              <input type="radio" id="tipoMotorista" name="tipo" value="motorista">
+              <label for="tipoMotorista">Motorista</label>
+            </div>
+          </div>
+          <button class="button" type="submit">Entrar</button>
+        </form>
+        <p class="muted" style="margin-top: 16px;">
+          Nao tem conta? <a href="/cadastro.html">Criar conta</a>
+        </p>
       </div>
-      <div class="card">
-        <h2>Como funciona</h2>
-        <p>1. Passageiro faz login e pede corrida com forma de pagamento.</p>
-        <p>2. Motoristas online veem corridas ordenadas pela distancia.</p>
-        <p>3. O primeiro a aceitar fica com a corrida.</p>
-      </div>
-    </section>
-
-    <main class="grid">
-      <section class="card" id="loginCard">
-        <h2>Login</h2>
-        <p>Use telefone ou email e senha.</p>
-        <label for="loginTipo">Tipo</label>
-        <select id="loginTipo">
-          <option value="passageiro">Passageiro</option>
-          <option value="motorista">Motorista</option>
-        </select>
-        <label for="loginIdentificador">Telefone ou email</label>
-        <input id="loginIdentificador" placeholder="11999990000 ou email@dominio.com" />
-        <label for="loginSenha">Senha</label>
-        <input id="loginSenha" type="password" placeholder="Sua senha" />
-        <button onclick="login()">Entrar</button>
-        <pre id="loginResultado"></pre>
-      </section>
-
-      <section class="card" id="cadastroCard">
-        <h2>Cadastro</h2>
-        <p>Crie conta de passageiro ou motorista.</p>
-        <label for="cadTipo">Tipo</label>
-        <select id="cadTipo" onchange="toggleCadastroFields()">
-          <option value="passageiro">Passageiro</option>
-          <option value="motorista">Motorista</option>
-        </select>
-        <label for="cadNome">Nome</label>
-        <input id="cadNome" placeholder="Seu nome" />
-        <label for="cadTelefone">Telefone</label>
-        <input id="cadTelefone" placeholder="11999990000" />
-        <label for="cadEmail">Email (opcional)</label>
-        <input id="cadEmail" placeholder="email@dominio.com" />
-        <label for="cadSenha">Senha</label>
-        <input id="cadSenha" type="password" placeholder="Crie uma senha" />
-        <div id="cadMotoristaFields" class="hidden">
-          <label for="cadCarro">Carro</label>
-          <input id="cadCarro" placeholder="Ex: Onix 2020" />
-          <label for="cadPlaca">Placa</label>
-          <input id="cadPlaca" placeholder="Ex: ABC1D23" />
-          <label for="cadCor">Cor (opcional)</label>
-          <input id="cadCor" placeholder="Ex: Prata" />
-        </div>
-        <button onclick="cadastrar()">Cadastrar</button>
-        <pre id="cadResultado"></pre>
-      </section>
-
-      <section class="card hidden" id="passageiroPanel">
-        <h2>Pedido de corrida</h2>
-        <p>Mapa claro mostrando sua localizacao atual.</p>
-        <div class="map" id="map"></div>
-        <button class="secondary" onclick="pegarLocalizacao()">Usar minha localizacao</button>
-        <label for="corridaUsuarioId">ID do passageiro</label>
-        <input id="corridaUsuarioId" placeholder="Ex: 1" />
-        <label for="corridaOrigem">Origem (texto)</label>
-        <input id="corridaOrigem" placeholder="Ex: Rua A, 100" />
-        <label for="corridaOrigemLat">Origem lat</label>
-        <input id="corridaOrigemLat" placeholder="-23.55" />
-        <label for="corridaOrigemLng">Origem lng</label>
-        <input id="corridaOrigemLng" placeholder="-46.63" />
-        <label for="corridaDestino">Destino (texto)</label>
-        <input id="corridaDestino" placeholder="Ex: Avenida B, 200" />
-        <label for="corridaDestinoLat">Destino lat (opcional)</label>
-        <input id="corridaDestinoLat" placeholder="-23.56" />
-        <label for="corridaDestinoLng">Destino lng (opcional)</label>
-        <input id="corridaDestinoLng" placeholder="-46.62" />
-        <label for="corridaDistancia">Distancia (km)</label>
-        <input id="corridaDistancia" placeholder="Ex: 8.4" />
-        <label for="corridaPagamento">Forma de pagamento</label>
-        <select id="corridaPagamento">
-          <option value="dinheiro">Dinheiro</option>
-          <option value="cartao">Cartao</option>
-          <option value="pix">Pix</option>
-        </select>
-        <div class="note" id="valorEstimado">Valor estimado: R$ 0,00</div>
-        <button onclick="pedirCorrida()">Solicitar corrida</button>
-        <pre id="corridaResultado"></pre>
-      </section>
-
-      <section class="card hidden" id="motoristaPanel">
-        <h2>Painel do motorista</h2>
-        <p>Fique online para receber corridas perto de voce.</p>
-        <div class="status-pill" id="motoristaStatus">Offline</div>
-        <button onclick="toggleMotoristaOnline()" id="motoristaToggle">Ficar online</button>
-        <div class="note" id="motoristaLocalizacao">Localizacao: nao definida</div>
-        <h3>Corridas pendentes</h3>
-        <div class="rides" id="corridasPendentes"></div>
-        <h3>Corrida atual</h3>
-        <div id="corridaAtualBox" class="ride-item">Nenhuma corrida aceita.</div>
-      </section>
-    </main>
+    </div>
   </div>
 
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin=""
-  ></script>
   <script>
-    const DEFAULT_API_BASE =
-      window.location.origin && window.location.origin.startsWith("http")
-        ? window.location.origin
-        : "https://teste-h861.onrender.com";
+    const API_BASE = window.location.origin && window.location.origin.startsWith("http")
+      ? window.location.origin
+      : "http://localhost:10000";
 
-    let usuarioAtual = null;
-    let motoristaAtual = null;
-    let map = null;
-    let userMarker = null;
-    let motoristaOnline = false;
-    let motoristaEmCorrida = false;
-    let motoristaWatchId = null;
-    let motoristaPoll = null;
-    let corridaAtual = null;
-    let motoristaUltLat = null;
-    let motoristaUltLng = null;
+    const loginForm = document.getElementById("loginForm");
+    const loginMessage = document.getElementById("loginMessage");
 
-    function getApiBase() {
-      const input = document.getElementById("apiBase");
-      const valor = (input.value || DEFAULT_API_BASE).trim();
-      return valor.replace(/\/$/, "");
+    function showMessage(type, text) {
+      loginMessage.className = `message ${type} show`;
+      loginMessage.textContent = text;
     }
 
-    function setResultado(id, data) {
-      const alvo = document.getElementById(id);
-      alvo.textContent = JSON.stringify(data, null, 2);
+    function clearMessage() {
+      loginMessage.className = "message";
+      loginMessage.textContent = "";
     }
 
-    function renderSessao() {
-      const chip = document.getElementById("sessaoStatus");
-      if (motoristaAtual && usuarioAtual) {
-        chip.textContent = `Motorista: ${usuarioAtual.nome} (Usuario ${usuarioAtual.id} | Motorista ${motoristaAtual.id})`;
-        return;
-      }
-      if (usuarioAtual) {
-        chip.textContent = `Passageiro: ${usuarioAtual.nome} (ID ${usuarioAtual.id})`;
-        return;
-      }
-      chip.textContent = "Sem sessao ativa";
-    }
+    loginForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearMessage();
 
-    function renderPanels() {
-      const passageiroPanel = document.getElementById("passageiroPanel");
-      const motoristaPanel = document.getElementById("motoristaPanel");
-      const isPassageiro = usuarioAtual && usuarioAtual.tipo === "passageiro";
-      passageiroPanel.classList.toggle("hidden", !isPassageiro);
-      motoristaPanel.classList.toggle("hidden", !motoristaAtual);
-      if (isPassageiro && map) {
-        setTimeout(() => map.invalidateSize(), 100);
-      }
-    }
-
-    function toggleCadastroFields() {
-      const tipo = document.getElementById("cadTipo").value;
-      document.getElementById("cadMotoristaFields").classList.toggle("hidden", tipo !== "motorista");
-    }
-
-    function initMap() {
-      const mapContainer = document.getElementById("map");
-      if (!mapContainer) return;
-      map = L.map(mapContainer).setView([-23.55, -46.63], 13);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: "&copy; OpenStreetMap"
-      }).addTo(map);
-      userMarker = L.marker([-23.55, -46.63]).addTo(map).bindPopup("Sua localizacao");
-    }
-
-    function updateMap(lat, lng) {
-      if (!map || !userMarker) return;
-      userMarker.setLatLng([lat, lng]);
-      map.setView([lat, lng], 14);
-    }
-
-    function pegarLocalizacao() {
-      if (!navigator.geolocation) {
-        setResultado("corridaResultado", { ok: false, mensagem: "Geolocalizacao nao suportada" });
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          document.getElementById("corridaOrigemLat").value = lat.toFixed(6);
-          document.getElementById("corridaOrigemLng").value = lng.toFixed(6);
-          updateMap(lat, lng);
-          atualizarEstimativa();
-        },
-        (erro) => {
-          setResultado("corridaResultado", { ok: false, mensagem: "Falha ao obter localizacao", erro: String(erro) });
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
-    }
-
-    function parseNumberInput(id) {
-      const raw = document.getElementById(id).value.trim().replace(",", ".");
-      const n = Number(raw);
-      return Number.isFinite(n) ? n : null;
-    }
-
-    function haversineKm(lat1, lon1, lat2, lon2) {
-      const R = 6371;
-      const dLat = ((lat2 - lat1) * Math.PI) / 180;
-      const dLon = ((lon2 - lon1) * Math.PI) / 180;
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((lat1 * Math.PI) / 180) *
-          Math.cos((lat2 * Math.PI) / 180) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
-    }
-
-    function calcularDistanciaKm() {
-      const oLat = parseNumberInput("corridaOrigemLat");
-      const oLng = parseNumberInput("corridaOrigemLng");
-      const dLat = parseNumberInput("corridaDestinoLat");
-      const dLng = parseNumberInput("corridaDestinoLng");
-      const distManual = parseNumberInput("corridaDistancia");
-
-      if (oLat !== null && oLng !== null && dLat !== null && dLng !== null) {
-        return haversineKm(oLat, oLng, dLat, dLng);
-      }
-
-      if (distManual !== null) {
-        return distManual;
-      }
-
-      return null;
-    }
-
-    function atualizarEstimativa() {
-      const dist = calcularDistanciaKm();
-      const alvo = document.getElementById("valorEstimado");
-      if (dist === null) {
-        alvo.textContent = "Valor estimado: R$ 0,00";
-        return;
-      }
-      const valor = dist * 1;
-      alvo.textContent = `Valor estimado: R$ ${valor.toFixed(2)} (${dist.toFixed(2)} km)`;
-    }
-
-    async function login() {
-      const tipo = document.getElementById("loginTipo").value;
       const identificador = document.getElementById("loginIdentificador").value.trim();
       const senha = document.getElementById("loginSenha").value.trim();
+      const tipo = document.querySelector("input[name='tipo']:checked").value;
 
       if (!identificador || !senha) {
-        setResultado("loginResultado", { ok: false, mensagem: "Informe identificador e senha" });
+        showMessage("error", "Informe seu telefone/email e senha.");
         return;
       }
 
       try {
-        const resposta = await fetch(getApiBase() + "/auth/login", {
+        const resposta = await fetch(API_BASE + "/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tipo, identificador, senha })
+          body: JSON.stringify({ identificador, senha, tipo })
         });
         const dados = await resposta.json();
-        setResultado("loginResultado", dados);
 
         if (!dados.ok) {
+          showMessage("error", dados.mensagem || "Falha no login.");
           return;
         }
 
-        usuarioAtual = dados.usuario;
-        motoristaAtual = dados.motorista || null;
-        motoristaEmCorrida = false;
-        corridaAtual = null;
+        localStorage.setItem("corridaSession", JSON.stringify({
+          usuario: dados.usuario,
+          motorista: dados.motorista || null,
+          logadoEm: Date.now()
+        }));
 
-        if (usuarioAtual && usuarioAtual.tipo === "passageiro") {
-          document.getElementById("corridaUsuarioId").value = usuarioAtual.id || "";
-        }
-
-        renderSessao();
-        renderPanels();
-        renderCorridaAtual();
+        window.location.href = "/app.html";
       } catch (erro) {
-        setResultado("loginResultado", { ok: false, mensagem: "Falha no login", erro: String(erro) });
+        showMessage("error", "Nao foi possivel conectar. Tente novamente.");
       }
-    }
-
-    async function cadastrar() {
-      const tipo = document.getElementById("cadTipo").value;
-      const nome = document.getElementById("cadNome").value.trim();
-      const telefone = document.getElementById("cadTelefone").value.trim();
-      const email = document.getElementById("cadEmail").value.trim();
-      const senha = document.getElementById("cadSenha").value.trim();
-      const carro = document.getElementById("cadCarro").value.trim();
-      const placa = document.getElementById("cadPlaca").value.trim();
-      const cor = document.getElementById("cadCor").value.trim();
-
-      if (!nome || !telefone || !senha) {
-        setResultado("cadResultado", { ok: false, mensagem: "Nome, telefone e senha sao obrigatorios" });
-        return;
-      }
-
-      if (tipo === "motorista" && (!carro || !placa)) {
-        setResultado("cadResultado", { ok: false, mensagem: "Carro e placa sao obrigatorios" });
-        return;
-      }
-
-      try {
-        const resposta = await fetch(getApiBase() + "/auth/registrar", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tipo, nome, telefone, email, senha, carro, placa, cor })
-        });
-        const dados = await resposta.json();
-        setResultado("cadResultado", dados);
-
-        if (!dados.ok) {
-          return;
-        }
-
-        usuarioAtual = dados.usuario;
-        motoristaAtual = dados.motorista || null;
-        motoristaEmCorrida = false;
-        corridaAtual = null;
-
-        if (usuarioAtual && usuarioAtual.tipo === "passageiro") {
-          document.getElementById("corridaUsuarioId").value = usuarioAtual.id || "";
-        }
-
-        renderSessao();
-        renderPanels();
-        renderCorridaAtual();
-      } catch (erro) {
-        setResultado("cadResultado", { ok: false, mensagem: "Falha no cadastro", erro: String(erro) });
-      }
-    }
-
-    async function pedirCorrida() {
-      const passageiroId = document.getElementById("corridaUsuarioId").value.trim();
-      const origem = document.getElementById("corridaOrigem").value.trim();
-      const destino = document.getElementById("corridaDestino").value.trim();
-      const pagamentoMetodo = document.getElementById("corridaPagamento").value;
-
-      if (!passageiroId || !origem || !destino) {
-        setResultado("corridaResultado", { ok: false, mensagem: "Preencha passageiro, origem e destino" });
-        return;
-      }
-
-      const distanciaKm = calcularDistanciaKm();
-      const origemLat = parseNumberInput("corridaOrigemLat");
-      const origemLng = parseNumberInput("corridaOrigemLng");
-      const destinoLat = parseNumberInput("corridaDestinoLat");
-      const destinoLng = parseNumberInput("corridaDestinoLng");
-
-      try {
-        const resposta = await fetch(getApiBase() + "/corridas", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            passageiroId,
-            origem,
-            destino,
-            origemLat,
-            origemLng,
-            destinoLat,
-            destinoLng,
-            distanciaKm,
-            pagamentoMetodo
-          })
-        });
-        const dados = await resposta.json();
-        setResultado("corridaResultado", dados);
-      } catch (erro) {
-        setResultado("corridaResultado", { ok: false, mensagem: "Falha ao pedir corrida", erro: String(erro) });
-      }
-    }
-
-    function renderMotoristaStatus() {
-      const status = document.getElementById("motoristaStatus");
-      const toggle = document.getElementById("motoristaToggle");
-
-      if (motoristaEmCorrida) {
-        status.textContent = "Em corrida";
-        status.classList.add("busy");
-        status.classList.remove("online");
-        toggle.textContent = "Ficar offline";
-        return;
-      }
-
-      status.textContent = motoristaOnline ? "Online" : "Offline";
-      status.classList.toggle("online", motoristaOnline);
-      status.classList.remove("busy");
-      toggle.textContent = motoristaOnline ? "Ficar offline" : "Ficar online";
-    }
-
-    async function atualizarMotoristaStatus(lat, lng) {
-      if (!motoristaAtual) return;
-
-      const disponivel = motoristaOnline && !motoristaEmCorrida;
-      const payload = { disponivel };
-
-      if (lat !== null && lng !== null) {
-        payload.latitude = lat;
-        payload.longitude = lng;
-      }
-
-      await fetch(getApiBase() + `/motoristas/${motoristaAtual.id}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-    }
-
-    function setMotoristaLocalizacao(lat, lng) {
-      const box = document.getElementById("motoristaLocalizacao");
-      if (lat === null || lng === null) {
-        box.textContent = "Localizacao: nao definida";
-        return;
-      }
-      motoristaUltLat = lat;
-      motoristaUltLng = lng;
-      box.textContent = `Localizacao: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-    }
-
-    function iniciarPollingCorridas() {
-      if (motoristaPoll) return;
-      motoristaPoll = setInterval(carregarCorridasPendentes, 5000);
-    }
-
-    function pararPollingCorridas() {
-      if (motoristaPoll) {
-        clearInterval(motoristaPoll);
-        motoristaPoll = null;
-      }
-    }
-
-    async function toggleMotoristaOnline() {
-      if (!motoristaAtual) return;
-
-      if (!navigator.geolocation) {
-        setResultado("loginResultado", { ok: false, mensagem: "Geolocalizacao nao suportada" });
-        return;
-      }
-
-      motoristaOnline = !motoristaOnline;
-      renderMotoristaStatus();
-
-      if (!motoristaOnline) {
-        if (motoristaWatchId !== null) {
-          navigator.geolocation.clearWatch(motoristaWatchId);
-          motoristaWatchId = null;
-        }
-        pararPollingCorridas();
-        await atualizarMotoristaStatus(motoristaUltLat, motoristaUltLng);
-        return;
-      }
-
-      motoristaWatchId = navigator.geolocation.watchPosition(
-        async (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          setMotoristaLocalizacao(lat, lng);
-          await atualizarMotoristaStatus(lat, lng);
-          await carregarCorridasPendentes();
-        },
-        (erro) => {
-          setResultado("loginResultado", { ok: false, mensagem: "Falha ao obter localizacao", erro: String(erro) });
-        },
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
-
-      iniciarPollingCorridas();
-    }
-
-    function renderCorridasPendentes(corridas) {
-      const container = document.getElementById("corridasPendentes");
-
-      if (motoristaEmCorrida) {
-        container.innerHTML = "<div class=\"ride-item\">Voce esta em corrida. Termine para receber novas.</div>";
-        return;
-      }
-
-      if (!corridas || corridas.length === 0) {
-        container.innerHTML = "<div class=\"ride-item\">Nenhuma corrida pendente.</div>";
-        return;
-      }
-
-      container.innerHTML = corridas
-        .map((c) => {
-          const dist = c.distanciaParaMotoristaKm !== null ? `${c.distanciaParaMotoristaKm} km` : "distancia desconhecida";
-          return `
-            <div class="ride-item">
-              <strong>Corrida #${c.id}</strong>
-              Origem: ${c.origem}<br />
-              Destino: ${c.destino}<br />
-              Valor: R$ ${Number(c.valor || 0).toFixed(2)}<br />
-              Distancia: ${dist}<br />
-              <button onclick="aceitarCorrida(${c.id})">Aceitar</button>
-            </div>
-          `;
-        })
-        .join("");
-    }
-
-    async function carregarCorridasPendentes() {
-      if (!motoristaAtual || !motoristaOnline || motoristaEmCorrida) return;
-      try {
-        const resposta = await fetch(getApiBase() + `/corridas/pendentes?motoristaId=${motoristaAtual.id}`);
-        const dados = await resposta.json();
-        if (dados.corridas) {
-          renderCorridasPendentes(dados.corridas);
-        }
-      } catch (erro) {
-        setResultado("loginResultado", { ok: false, mensagem: "Falha ao carregar corridas", erro: String(erro) });
-      }
-    }
-
-    function renderCorridaAtual() {
-      const box = document.getElementById("corridaAtualBox");
-      if (!corridaAtual) {
-        box.textContent = "Nenhuma corrida aceita.";
-        return;
-      }
-
-      let actions = "";
-      if (corridaAtual.status === "motorista_a_caminho") {
-        actions = `<button onclick=\"iniciarCorrida(${corridaAtual.id})\">Iniciar corrida</button>`;
-      }
-      if (corridaAtual.status === "em_andamento") {
-        actions = `<button onclick=\"finalizarCorrida(${corridaAtual.id})\">Finalizar corrida</button>`;
-      }
-
-      box.innerHTML = `
-        <strong>Corrida #${corridaAtual.id}</strong><br />
-        Origem: ${corridaAtual.origem}<br />
-        Destino: ${corridaAtual.destino}<br />
-        Status: ${corridaAtual.status}<br />
-        Valor: R$ ${Number(corridaAtual.valor || 0).toFixed(2)}<br />
-        ${actions}
-      `;
-    }
-
-    async function aceitarCorrida(id) {
-      if (!motoristaAtual) return;
-      try {
-        const resposta = await fetch(getApiBase() + `/corridas/${id}/aceitar`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ motoristaId: motoristaAtual.id })
-        });
-        const dados = await resposta.json();
-        if (dados.corrida) {
-          corridaAtual = dados.corrida;
-          motoristaEmCorrida = true;
-          await atualizarMotoristaStatus(motoristaUltLat, motoristaUltLng);
-          renderMotoristaStatus();
-          renderCorridaAtual();
-          renderCorridasPendentes([]);
-        }
-      } catch (erro) {
-        setResultado("loginResultado", { ok: false, mensagem: "Falha ao aceitar", erro: String(erro) });
-      }
-    }
-
-    async function iniciarCorrida(id) {
-      try {
-        const resposta = await fetch(getApiBase() + `/corridas/${id}/iniciar`, { method: "PUT" });
-        const dados = await resposta.json();
-        if (dados.corrida) {
-          corridaAtual = dados.corrida;
-          renderCorridaAtual();
-        }
-      } catch (erro) {
-        setResultado("loginResultado", { ok: false, mensagem: "Falha ao iniciar", erro: String(erro) });
-      }
-    }
-
-    async function finalizarCorrida(id) {
-      try {
-        const resposta = await fetch(getApiBase() + `/corridas/${id}/finalizar`, { method: "PUT" });
-        const dados = await resposta.json();
-        if (dados.corrida) {
-          corridaAtual = null;
-          motoristaEmCorrida = false;
-          await atualizarMotoristaStatus(motoristaUltLat, motoristaUltLng);
-          renderMotoristaStatus();
-          renderCorridaAtual();
-          await carregarCorridasPendentes();
-        }
-      } catch (erro) {
-        setResultado("loginResultado", { ok: false, mensagem: "Falha ao finalizar", erro: String(erro) });
-      }
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-      const apiBaseInput = document.getElementById("apiBase");
-      const salvo = localStorage.getItem("apiBase");
-      if (salvo) {
-        apiBaseInput.value = salvo;
-      } else {
-        apiBaseInput.value = DEFAULT_API_BASE;
-      }
-      apiBaseInput.addEventListener("change", () => {
-        localStorage.setItem("apiBase", apiBaseInput.value.trim() || DEFAULT_API_BASE);
-      });
-
-      document.getElementById("corridaDestinoLat").addEventListener("input", atualizarEstimativa);
-      document.getElementById("corridaDestinoLng").addEventListener("input", atualizarEstimativa);
-      document.getElementById("corridaDistancia").addEventListener("input", atualizarEstimativa);
-      document.getElementById("corridaOrigemLat").addEventListener("input", atualizarEstimativa);
-      document.getElementById("corridaOrigemLng").addEventListener("input", atualizarEstimativa);
-
-      toggleCadastroFields();
-      renderSessao();
-      renderPanels();
-      initMap();
-      atualizarEstimativa();
-      renderMotoristaStatus();
     });
   </script>
 </body>

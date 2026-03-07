@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Corrida Simples | Inicio</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
+  >
+</head>
+<body>
+  <div class="app-shell">
+    <div class="topbar">
+      <div class="title">
+        <h1>Corrida Simples</h1>
+        <span id="userSummary">Carregando sessao...</span>
+      </div>
+      <button class="button secondary" id="logoutBtn">Sair</button>
+    </div>
+
+    <div class="app-content">
+      <div class="card" id="passengerPanel">
+        <h2>Pedir corrida</h2>
+        <p>Digite os enderecos e escolha a forma de pagamento.</p>
+        <div id="passengerMessage" class="message"></div>
+        <div class="form-field">
+          <label for="origemInput">Origem</label>
+          <input id="origemInput" placeholder="Rua, numero">
+        </div>
+        <button class="button secondary" type="button" id="usarLocalizacao">Usar minha localizacao</button>
+        <div class="form-field">
+          <label for="destinoInput">Destino</label>
+          <input id="destinoInput" placeholder="Rua, numero">
+        </div>
+        <div class="form-field">
+          <label for="pagamentoSelect">Forma de pagamento</label>
+          <select id="pagamentoSelect">
+            <option value="dinheiro">Dinheiro</option>
+            <option value="cartao">Cartao</option>
+            <option value="pix">Pix</option>
+          </select>
+        </div>
+        <div class="muted" id="valorEstimado">Valor estimado: R$ 0,00</div>
+        <button class="button" type="button" id="solicitarCorrida">Solicitar corrida</button>
+      </div>
+
+      <div class="card hidden" id="driverPanel">
+        <h2>Painel do motorista</h2>
+        <p>Fique online para receber corridas mais proximas.</p>
+        <div id="driverMessage" class="message"></div>
+        <div class="status-pill" id="driverStatus">Offline</div>
+        <button class="button" type="button" id="driverToggle">Ficar online</button>
+        <div class="muted" id="driverLocation">Localizacao: nao definida</div>
+        <div style="margin-top: 16px;">
+          <h3>Corrida atual</h3>
+          <div class="ride-item" id="currentRide">Nenhuma corrida aceita.</div>
+        </div>
+        <div style="margin-top: 16px;">
+          <h3>Corridas pendentes</h3>
+          <div class="ride-list" id="pendingRides"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div id="passengerMap" class="map-box"></div>
+        <div id="driverMap" class="map-box hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin && window.location.origin.startsWith("http")
+      ? window.location.origin
+      : "http://localhost:10000";
+
+    const sessionRaw = localStorage.getItem("corridaSession");
+    const session = sessionRaw ? JSON.parse(sessionRaw) : null;
+
+    if (!session || !session.usuario) {
+      window.location.href = "/index.html";
+    }
+
+    const usuario = session.usuario;
+    const motorista = session.motorista || null;
+
+    const userSummary = document.getElementById("userSummary");
+    const passengerPanel = document.getElementById("passengerPanel");
+    const driverPanel = document.getElementById("driverPanel");
+    const passengerMapEl = document.getElementById("passengerMap");
+    const driverMapEl = document.getElementById("driverMap");
+    const logoutBtn = document.getElementById("logoutBtn");
+
+    let passengerMap = null;
+    let passengerDirectionsService = null;
+    let passengerDirectionsRenderer = null;
+    let passengerGeocoder = null;
+    let passengerOriginMarker = null;
+    let passengerDestinationMarker = null;
+    let passengerOriginCoords = null;
+    let passengerDestinationCoords = null;
+    let passengerDistanceKm = null;
+
+    let driverMap = null;
+    let driverMarker = null;
+    let pickupMarker = null;
+    let dropoffMarker = null;
+    let driverDirectionsService = null;
+    let driverDirectionsRenderer = null;
+    let driverPosition = null;
+    let driverOnline = false;
+    let driverInRide = false;
+    let driverWatchId = null;
+    let pendingPoll = null;
+    let pendingIds = new Set();
+    let currentRide = null;
+    let driverRouteTarget = null;
+    let lastRouteUpdate = 0;
+    let audioContext = null;
+
+    const passengerMessage = document.getElementById("passengerMessage");
+    const driverMessage = document.getElementById("driverMessage");
+
+    const origemInput = document.getElementById("origemInput");
+    const destinoInput = document.getElementById("destinoInput");
+    const pagamentoSelect = document.getElementById("pagamentoSelect");
+    const valorEstimado = document.getElementById("valorEstimado");
+    const solicitarCorridaBtn = document.getElementById("solicitarCorrida");
+    const usarLocalizacaoBtn = document.getElementById("usarLocalizacao");
+
+    const driverStatus = document.getElementById("driverStatus");
+    const driverToggle = document.getElementById("driverToggle");
+    const driverLocation = document.getElementById("driverLocation");
+    const pendingRides = document.getElementById("pendingRides");
+    const currentRideBox = document.getElementById("currentRide");
+
+    function showMessage(element, type, text) {
+      element.className = `message ${type} show`;
+      element.textContent = text;
+    }
+
+    function clearMessage(element) {
+      element.className = "message";
+      element.textContent = "";
+    }
+
+    function updateUserSummary() {
+      if (usuario.tipo === "motorista") {
+        userSummary.textContent = `Motorista: ${usuario.nome}`;
+      } else {
+        userSummary.textContent = `Passageiro: ${usuario.nome}`;
+      }
+    }
+
+    function setupPanels() {
+      const isPassenger = usuario.tipo === "passageiro";
+      passengerPanel.classList.toggle("hidden", !isPassenger);
+      passengerMapEl.classList.toggle("hidden", !isPassenger);
+      driverPanel.classList.toggle("hidden", isPassenger);
+      driverMapEl.classList.toggle("hidden", isPassenger);
+    }
+
+    logoutBtn.addEventListener("click", () => {
+      localStorage.removeItem("corridaSession");
+      window.location.href = "/index.html";
+    });
+
+    function initPassengerMap() {
+      passengerMap = new google.maps.Map(passengerMapEl, {
+        center: { lat: -23.5505, lng: -46.6333 },
+        zoom: 13
+      });
+      passengerDirectionsService = new google.maps.DirectionsService();
+      passengerDirectionsRenderer = new google.maps.DirectionsRenderer({
+        map: passengerMap,
+        suppressMarkers: true
+      });
+      passengerGeocoder = new google.maps.Geocoder();
+
+      passengerOriginMarker = new google.maps.Marker({
+        map: passengerMap,
+        label: "O",
+        visible: false
+      });
+      passengerDestinationMarker = new google.maps.Marker({
+        map: passengerMap,
+        label: "D",
+        visible: false
+      });
+
+      const originAuto = new google.maps.places.Autocomplete(origemInput, {
+        fields: ["geometry", "formatted_address"]
+      });
+      const destinoAuto = new google.maps.places.Autocomplete(destinoInput, {
+        fields: ["geometry", "formatted_address"]
+      });
+
+      originAuto.addListener("place_changed", () => {
+        const place = originAuto.getPlace();
+        if (!place.geometry) {
+          showMessage(passengerMessage, "error", "Selecione um endereco valido na origem.");
+          return;
+        }
+        passengerOriginCoords = {
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng()
+        };
+        origemInput.value = place.formatted_address || origemInput.value;
+        passengerOriginMarker.setPosition(passengerOriginCoords);
+        passengerOriginMarker.setVisible(true);
+        passengerMap.setCenter(passengerOriginCoords);
+        updatePassengerRoute();
+      });
+
+      destinoAuto.addListener("place_changed", () => {
+        const place = destinoAuto.getPlace();
+        if (!place.geometry) {
+          showMessage(passengerMessage, "error", "Selecione um endereco valido no destino.");
+          return;
+        }
+        passengerDestinationCoords = {
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng()
+        };
+        destinoInput.value = place.formatted_address || destinoInput.value;
+        passengerDestinationMarker.setPosition(passengerDestinationCoords);
+        passengerDestinationMarker.setVisible(true);
+        updatePassengerRoute();
+      });
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          passengerMap.setCenter(coords);
+        });
+      }
+    }
+
+    function geocodeAddress(address) {
+      return new Promise((resolve, reject) => {
+        if (!passengerGeocoder) {
+          reject("Geocoder indisponivel");
+          return;
+        }
+        passengerGeocoder.geocode({ address }, (results, status) => {
+          if (status === "OK" && results[0]) {
+            resolve({
+              coords: {
+                lat: results[0].geometry.location.lat(),
+                lng: results[0].geometry.location.lng()
+              },
+              formatted: results[0].formatted_address
+            });
+          } else {
+            reject(status);
+          }
+        });
+      });
+    }
+
+    function reverseGeocode(coords) {
+      return new Promise((resolve, reject) => {
+        if (!passengerGeocoder) {
+          reject("Geocoder indisponivel");
+          return;
+        }
+        passengerGeocoder.geocode({ location: coords }, (results, status) => {
+          if (status === "OK" && results[0]) {
+            resolve(results[0].formatted_address);
+          } else {
+            reject(status);
+          }
+        });
+      });
+    }
+
+    function updatePassengerRoute() {
+      clearMessage(passengerMessage);
+      if (!passengerOriginCoords || !passengerDestinationCoords) {
+        return Promise.resolve(null);
+      }
+
+      return new Promise((resolve) => {
+        passengerDirectionsService.route(
+          {
+            origin: passengerOriginCoords,
+            destination: passengerDestinationCoords,
+            travelMode: google.maps.TravelMode.DRIVING
+          },
+          (result, status) => {
+            if (status !== "OK") {
+              showMessage(passengerMessage, "error", "Nao foi possivel calcular a rota.");
+              resolve(null);
+              return;
+            }
+            passengerDirectionsRenderer.setDirections(result);
+            const leg = result.routes[0].legs[0];
+            passengerDistanceKm = leg.distance.value / 1000;
+            const valor = passengerDistanceKm * 1;
+            valorEstimado.textContent = `Valor estimado: R$ ${valor.toFixed(2)} (${passengerDistanceKm.toFixed(2)} km)`;
+            resolve(passengerDistanceKm);
+          }
+        );
+      });
+    }
+
+    usarLocalizacaoBtn.addEventListener("click", async () => {
+      clearMessage(passengerMessage);
+      if (!navigator.geolocation) {
+        showMessage(passengerMessage, "error", "Geolocalizacao nao suportada.");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          passengerOriginCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          passengerOriginMarker.setPosition(passengerOriginCoords);
+          passengerOriginMarker.setVisible(true);
+          passengerMap.setCenter(passengerOriginCoords);
+          try {
+            const endereco = await reverseGeocode(passengerOriginCoords);
+            origemInput.value = endereco;
+          } catch (erro) {
+            origemInput.value = `${passengerOriginCoords.lat.toFixed(5)}, ${passengerOriginCoords.lng.toFixed(5)}`;
+          }
+          updatePassengerRoute();
+        },
+        () => {
+          showMessage(passengerMessage, "error", "Nao foi possivel obter sua localizacao.");
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    });
+
+    solicitarCorridaBtn.addEventListener("click", async () => {
+      clearMessage(passengerMessage);
+      let origemTexto = origemInput.value.trim();
+      let destinoTexto = destinoInput.value.trim();
+
+      if (!origemTexto || !destinoTexto) {
+        showMessage(passengerMessage, "error", "Informe origem e destino.");
+        return;
+      }
+
+      try {
+        if (!passengerOriginCoords) {
+          const result = await geocodeAddress(origemTexto);
+          passengerOriginCoords = result.coords;
+          origemTexto = result.formatted;
+          origemInput.value = result.formatted;
+        }
+        if (!passengerDestinationCoords) {
+          const result = await geocodeAddress(destinoTexto);
+          passengerDestinationCoords = result.coords;
+          destinoTexto = result.formatted;
+          destinoInput.value = result.formatted;
+        }
+
+        const distance = await updatePassengerRoute();
+
+        const distanciaKm = distance ? Number(distance.toFixed(2)) : null;
+        const pagamentoMetodo = pagamentoSelect.value;
+
+        const resposta = await fetch(API_BASE + "/corridas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            passageiroId: usuario.id,
+            origem: origemTexto,
+            destino: destinoTexto,
+            origemLat: passengerOriginCoords.lat,
+            origemLng: passengerOriginCoords.lng,
+            destinoLat: passengerDestinationCoords.lat,
+            destinoLng: passengerDestinationCoords.lng,
+            distanciaKm,
+            pagamentoMetodo
+          })
+        });
+        const dados = await resposta.json();
+
+        if (!dados.ok) {
+          showMessage(passengerMessage, "error", dados.mensagem || "Falha ao solicitar corrida.");
+          return;
+        }
+
+        showMessage(passengerMessage, "success", "Corrida solicitada! Aguardando motorista.");
+      } catch (erro) {
+        showMessage(passengerMessage, "error", "Nao foi possivel solicitar a corrida.");
+      }
+    });
+
+    function initDriverMap() {
+      driverMap = new google.maps.Map(driverMapEl, {
+        center: { lat: -23.5505, lng: -46.6333 },
+        zoom: 13
+      });
+      driverDirectionsService = new google.maps.DirectionsService();
+      driverDirectionsRenderer = new google.maps.DirectionsRenderer({
+        map: driverMap,
+        suppressMarkers: true
+      });
+
+      driverMarker = new google.maps.Marker({
+        map: driverMap,
+        label: "Voce"
+      });
+      pickupMarker = new google.maps.Marker({
+        map: driverMap,
+        label: "O",
+        visible: false
+      });
+      dropoffMarker = new google.maps.Marker({
+        map: driverMap,
+        label: "D",
+        visible: false
+      });
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          driverMap.setCenter(coords);
+        });
+      }
+    }
+
+    function updateDriverStatus() {
+      if (driverInRide) {
+        driverStatus.textContent = "Em corrida";
+        driverStatus.classList.add("busy");
+        driverStatus.classList.remove("online");
+        driverToggle.textContent = "Ficar offline";
+        return;
+      }
+
+      driverStatus.textContent = driverOnline ? "Online" : "Offline";
+      driverStatus.classList.toggle("online", driverOnline);
+      driverStatus.classList.remove("busy");
+      driverToggle.textContent = driverOnline ? "Ficar offline" : "Ficar online";
+    }
+
+    function updateDriverLocationDisplay() {
+      if (!driverPosition) {
+        driverLocation.textContent = "Localizacao: nao definida";
+        return;
+      }
+      driverLocation.textContent = `Localizacao: ${driverPosition.lat.toFixed(5)}, ${driverPosition.lng.toFixed(5)}`;
+    }
+
+    function playNotification() {
+      if (!audioContext) return;
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      gain.gain.value = 0.2;
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      osc.start();
+      osc.stop(audioContext.currentTime + 0.4);
+    }
+
+    function ensureAudioContext() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioContext.state === "suspended") {
+        audioContext.resume();
+      }
+    }
+
+    async function atualizarMotoristaStatus() {
+      if (!motorista) return;
+      const disponivel = driverOnline && !driverInRide;
+      const payload = { disponivel };
+      if (driverPosition) {
+        payload.latitude = driverPosition.lat;
+        payload.longitude = driverPosition.lng;
+      }
+      await fetch(API_BASE + `/motoristas/${motorista.id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    function updateDriverRoute(force) {
+      if (!driverRouteTarget || !driverPosition) {
+        return;
+      }
+      const now = Date.now();
+      if (!force && now - lastRouteUpdate < 10000) {
+        return;
+      }
+      lastRouteUpdate = now;
+      driverDirectionsService.route(
+        {
+          origin: driverPosition,
+          destination: driverRouteTarget,
+          travelMode: google.maps.TravelMode.DRIVING
+        },
+        (result, status) => {
+          if (status !== "OK") {
+            return;
+          }
+          driverDirectionsRenderer.setDirections(result);
+        }
+      );
+    }
+
+    function setRouteTarget(tipo, coords) {
+      driverRouteTarget = coords;
+      if (tipo === "pickup") {
+        pickupMarker.setPosition(coords);
+        pickupMarker.setVisible(true);
+        dropoffMarker.setVisible(false);
+      }
+      if (tipo === "dropoff") {
+        dropoffMarker.setPosition(coords);
+        dropoffMarker.setVisible(true);
+        pickupMarker.setVisible(false);
+      }
+      updateDriverRoute(true);
+    }
+
+    function renderCurrentRide() {
+      if (!currentRide) {
+        currentRideBox.textContent = "Nenhuma corrida aceita.";
+        return;
+      }
+
+      let actions = "";
+      if (currentRide.status === "motorista_a_caminho") {
+        actions = `<button class="button" type="button" onclick="iniciarCorrida()">Iniciar corrida</button>`;
+      }
+      if (currentRide.status === "em_andamento") {
+        actions = `<button class="button" type="button" onclick="finalizarCorrida()">Finalizar corrida</button>`;
+      }
+
+      currentRideBox.innerHTML = `
+        <strong>Corrida #${currentRide.id}</strong><br>
+        Origem: ${currentRide.origem}<br>
+        Destino: ${currentRide.destino}<br>
+        Valor: R$ ${Number(currentRide.valor || 0).toFixed(2)}<br>
+        Status: ${currentRide.status}<br>
+        ${actions}
+      `;
+    }
+
+    function renderPendingRides(lista) {
+      if (driverInRide) {
+        pendingRides.innerHTML = "<div class=\"ride-item\">Finalize a corrida atual para receber novas.</div>";
+        return;
+      }
+      if (!lista || lista.length === 0) {
+        pendingRides.innerHTML = "<div class=\"ride-item\">Nenhuma corrida pendente.</div>";
+        return;
+      }
+
+      pendingRides.innerHTML = lista
+        .map((corrida) => {
+          const dist = corrida.distanciaParaMotoristaKm !== null
+            ? `${corrida.distanciaParaMotoristaKm.toFixed(2)} km`
+            : "distancia nao informada";
+          return `
+            <div class="ride-item">
+              <strong>Corrida #${corrida.id}</strong>
+              Origem: ${corrida.origem}<br>
+              Destino: ${corrida.destino}<br>
+              Valor: R$ ${Number(corrida.valor || 0).toFixed(2)}<br>
+              Distancia: ${dist}<br>
+              <button class="button" type="button" onclick="aceitarCorrida(${corrida.id})">Aceitar</button>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    async function carregarCorridasPendentes() {
+      if (!motorista || !driverOnline || driverInRide) return;
+
+      try {
+        const resposta = await fetch(API_BASE + `/corridas/pendentes?motoristaId=${motorista.id}`);
+        const dados = await resposta.json();
+        const lista = dados.corridas || [];
+
+        const ids = new Set(lista.map((item) => item.id));
+        let novo = false;
+        ids.forEach((id) => {
+          if (!pendingIds.has(id)) {
+            novo = true;
+          }
+        });
+        pendingIds = ids;
+        if (novo) {
+          playNotification();
+        }
+
+        renderPendingRides(lista);
+      } catch (erro) {
+        showMessage(driverMessage, "error", "Nao foi possivel carregar corridas.");
+      }
+    }
+
+    driverToggle.addEventListener("click", async () => {
+      clearMessage(driverMessage);
+
+      if (!navigator.geolocation) {
+        showMessage(driverMessage, "error", "Geolocalizacao nao suportada.");
+        return;
+      }
+
+      ensureAudioContext();
+      driverOnline = !driverOnline;
+      updateDriverStatus();
+
+      if (!driverOnline) {
+        if (driverWatchId !== null) {
+          navigator.geolocation.clearWatch(driverWatchId);
+          driverWatchId = null;
+        }
+        clearInterval(pendingPoll);
+        pendingPoll = null;
+        pendingIds = new Set();
+        await atualizarMotoristaStatus();
+        return;
+      }
+
+      pendingIds = new Set();
+      driverWatchId = navigator.geolocation.watchPosition(
+        async (pos) => {
+          driverPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          driverMarker.setPosition(driverPosition);
+          driverMap.setCenter(driverPosition);
+          updateDriverLocationDisplay();
+          await atualizarMotoristaStatus();
+          updateDriverRoute(false);
+          await carregarCorridasPendentes();
+        },
+        () => {
+          showMessage(driverMessage, "error", "Nao foi possivel obter localizacao.");
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+
+      pendingPoll = setInterval(carregarCorridasPendentes, 6000);
+    });
+
+    window.aceitarCorrida = async function (id) {
+      clearMessage(driverMessage);
+      try {
+        const resposta = await fetch(API_BASE + `/corridas/${id}/aceitar`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ motoristaId: motorista.id })
+        });
+        const dados = await resposta.json();
+
+        if (!dados.ok) {
+          showMessage(driverMessage, "error", dados.mensagem || "Falha ao aceitar.");
+          return;
+        }
+
+        currentRide = dados.corrida;
+        driverInRide = true;
+        updateDriverStatus();
+        renderCurrentRide();
+        renderPendingRides([]);
+        await atualizarMotoristaStatus();
+
+        if (currentRide.origemLat && currentRide.origemLng) {
+          setRouteTarget("pickup", { lat: currentRide.origemLat, lng: currentRide.origemLng });
+        }
+      } catch (erro) {
+        showMessage(driverMessage, "error", "Nao foi possivel aceitar a corrida.");
+      }
+    };
+
+    window.iniciarCorrida = async function () {
+      if (!currentRide) return;
+      clearMessage(driverMessage);
+
+      try {
+        const resposta = await fetch(API_BASE + `/corridas/${currentRide.id}/iniciar`, { method: "PUT" });
+        const dados = await resposta.json();
+
+        if (!dados.ok) {
+          showMessage(driverMessage, "error", dados.mensagem || "Falha ao iniciar.");
+          return;
+        }
+
+        currentRide = dados.corrida;
+        renderCurrentRide();
+
+        if (currentRide.destinoLat && currentRide.destinoLng) {
+          setRouteTarget("dropoff", { lat: currentRide.destinoLat, lng: currentRide.destinoLng });
+        } else {
+          showMessage(driverMessage, "error", "Destino sem coordenadas.");
+        }
+      } catch (erro) {
+        showMessage(driverMessage, "error", "Nao foi possivel iniciar a corrida.");
+      }
+    };
+
+    window.finalizarCorrida = async function () {
+      if (!currentRide) return;
+      clearMessage(driverMessage);
+
+      try {
+        const resposta = await fetch(API_BASE + `/corridas/${currentRide.id}/finalizar`, { method: "PUT" });
+        const dados = await resposta.json();
+
+        if (!dados.ok) {
+          showMessage(driverMessage, "error", dados.mensagem || "Falha ao finalizar.");
+          return;
+        }
+
+        currentRide = null;
+        driverInRide = false;
+        updateDriverStatus();
+        renderCurrentRide();
+        driverDirectionsRenderer.set("directions", null);
+        pickupMarker.setVisible(false);
+        dropoffMarker.setVisible(false);
+        driverRouteTarget = null;
+        await atualizarMotoristaStatus();
+        await carregarCorridasPendentes();
+      } catch (erro) {
+        showMessage(driverMessage, "error", "Nao foi possivel finalizar.");
+      }
+    };
+
+    window.initApp = function () {
+      updateUserSummary();
+      setupPanels();
+
+      if (usuario.tipo === "passageiro") {
+        initPassengerMap();
+      } else {
+        initDriverMap();
+        updateDriverStatus();
+        renderCurrentRide();
+        renderPendingRides([]);
+        if (!motorista) {
+          showMessage(driverMessage, "error", "Perfil de motorista nao encontrado.");
+          driverToggle.disabled = true;
+        }
+      }
+    };
+  </script>
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key=SUA_CHAVE_GOOGLE_MAPS&libraries=places&callback=initApp"
+    async
+    defer
+  ></script>
+</body>
+</html>

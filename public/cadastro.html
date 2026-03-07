@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Corrida Simples | Cadastro</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap"
+  >
+</head>
+<body>
+  <div class="page">
+    <div class="auth-layout">
+      <div class="auth-brand">
+        <div class="badge">Cadastro</div>
+        <h1>Crie sua conta</h1>
+        <p>Cadastre-se como passageiro ou motorista e acesse o painel completo de corridas.</p>
+        <p class="muted">Motoristas online recebem chamadas com prioridade por distancia.</p>
+      </div>
+
+      <div class="card">
+        <h2>Novo cadastro</h2>
+        <p>Preencha seus dados abaixo.</p>
+        <div id="cadMessage" class="message"></div>
+        <form id="cadForm">
+          <div class="form-field">
+            <label>Tipo de conta</label>
+            <div class="toggle-group">
+              <input type="radio" id="cadTipoPassageiro" name="cadTipo" value="passageiro" checked>
+              <label for="cadTipoPassageiro">Passageiro</label>
+              <input type="radio" id="cadTipoMotorista" name="cadTipo" value="motorista">
+              <label for="cadTipoMotorista">Motorista</label>
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="cadNome">Nome</label>
+            <input id="cadNome" placeholder="Seu nome completo" required>
+          </div>
+          <div class="form-field">
+            <label for="cadTelefone">Telefone</label>
+            <input id="cadTelefone" placeholder="11999990000" required>
+          </div>
+          <div class="form-field">
+            <label for="cadEmail">Email (opcional)</label>
+            <input id="cadEmail" placeholder="email@dominio.com">
+          </div>
+          <div class="form-field">
+            <label for="cadSenha">Senha</label>
+            <input id="cadSenha" type="password" placeholder="Crie uma senha segura" required>
+          </div>
+          <div id="cadMotoristaFields" class="hidden">
+            <div class="form-field">
+              <label for="cadCarro">Carro</label>
+              <input id="cadCarro" placeholder="Ex: Onix 2020">
+            </div>
+            <div class="form-field">
+              <label for="cadPlaca">Placa</label>
+              <input id="cadPlaca" placeholder="ABC1D23">
+            </div>
+            <div class="form-field">
+              <label for="cadCor">Cor (opcional)</label>
+              <input id="cadCor" placeholder="Prata">
+            </div>
+          </div>
+          <button class="button" type="submit">Criar conta</button>
+          <button class="button secondary" type="button" id="voltarLogin">Voltar para login</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin && window.location.origin.startsWith("http")
+      ? window.location.origin
+      : "http://localhost:10000";
+
+    const cadForm = document.getElementById("cadForm");
+    const cadMessage = document.getElementById("cadMessage");
+    const cadMotoristaFields = document.getElementById("cadMotoristaFields");
+    const voltarLogin = document.getElementById("voltarLogin");
+
+    function showMessage(type, text) {
+      cadMessage.className = `message ${type} show`;
+      cadMessage.textContent = text;
+    }
+
+    function clearMessage() {
+      cadMessage.className = "message";
+      cadMessage.textContent = "";
+    }
+
+    function atualizarCamposMotorista() {
+      const tipo = document.querySelector("input[name='cadTipo']:checked").value;
+      cadMotoristaFields.classList.toggle("hidden", tipo !== "motorista");
+    }
+
+    document.querySelectorAll("input[name='cadTipo']").forEach((input) => {
+      input.addEventListener("change", atualizarCamposMotorista);
+    });
+
+    voltarLogin.addEventListener("click", () => {
+      window.location.href = "/index.html";
+    });
+
+    cadForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearMessage();
+
+      const tipo = document.querySelector("input[name='cadTipo']:checked").value;
+      const nome = document.getElementById("cadNome").value.trim();
+      const telefone = document.getElementById("cadTelefone").value.trim();
+      const email = document.getElementById("cadEmail").value.trim();
+      const senha = document.getElementById("cadSenha").value.trim();
+      const carro = document.getElementById("cadCarro").value.trim();
+      const placa = document.getElementById("cadPlaca").value.trim();
+      const cor = document.getElementById("cadCor").value.trim();
+
+      if (!nome || !telefone || !senha) {
+        showMessage("error", "Nome, telefone e senha sao obrigatorios.");
+        return;
+      }
+
+      if (tipo === "motorista" && (!carro || !placa)) {
+        showMessage("error", "Carro e placa sao obrigatorios para motorista.");
+        return;
+      }
+
+      try {
+        const resposta = await fetch(API_BASE + "/auth/registrar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tipo, nome, telefone, email, senha, carro, placa, cor })
+        });
+        const dados = await resposta.json();
+
+        if (!dados.ok) {
+          showMessage("error", dados.mensagem || "Falha no cadastro.");
+          return;
+        }
+
+        localStorage.setItem("corridaSession", JSON.stringify({
+          usuario: dados.usuario,
+          motorista: dados.motorista || null,
+          logadoEm: Date.now()
+        }));
+
+        showMessage("success", "Conta criada! Redirecionando...");
+        setTimeout(() => {
+          window.location.href = "/app.html";
+        }, 800);
+      } catch (erro) {
+        showMessage("error", "Nao foi possivel cadastrar. Tente novamente.");
+      }
+    });
+
+    atualizarCamposMotorista();
+  </script>
+</body>
+</html>
