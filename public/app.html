@@ -131,6 +131,12 @@
     let passengerDestinationCoords = null;
     let passengerDistanceKm = null;
     let passengerMapReady = false;
+    let passengerLiveMarker = null;
+    let passengerLivePosition = null;
+    let passengerWatchId = null;
+    let passengerOriginMode = "auto";
+    let passengerLastRouteUpdate = 0;
+    let passengerAutoLabel = "";
 
     let driverMap = null;
     let driverMarker = null;
@@ -376,6 +382,9 @@
 
       passengerOriginMarker = new mapboxgl.Marker({ color: "#0e7c86" }).setLngLat([-46.6333, -23.5505]);
       passengerDestinationMarker = new mapboxgl.Marker({ color: "#f97316" }).setLngLat([-46.6333, -23.5505]);
+      passengerLiveMarker = new mapboxgl.Marker({ color: "#2563eb" }).setLngLat([-46.6333, -23.5505]);
+
+      startPassengerWatch();
     }
 
     function updatePassengerMarkers() {
@@ -385,6 +394,9 @@
       }
       if (passengerDestinationCoords) {
         passengerDestinationMarker.setLngLat([passengerDestinationCoords.lng, passengerDestinationCoords.lat]).addTo(passengerMap);
+      }
+      if (passengerLivePosition) {
+        passengerLiveMarker.setLngLat([passengerLivePosition.lng, passengerLivePosition.lat]).addTo(passengerMap);
       }
       if (passengerOriginCoords && passengerDestinationCoords) {
         fitBounds(passengerMap, passengerOriginCoords, passengerDestinationCoords);
@@ -411,7 +423,49 @@
         setRoute(passengerMap, passengerRouteId, { type: "Feature", geometry: route.geometry }, "#0e7c86");
       }
       updatePassengerMarkers();
+      passengerLastRouteUpdate = Date.now();
       return passengerDistanceKm;
+    }
+
+    function startPassengerWatch() {
+      if (!navigator.geolocation) {
+        showMessage(passengerMessage, "error", "Geolocalizacao nao suportada.");
+        return;
+      }
+
+      passengerWatchId = navigator.geolocation.watchPosition(
+        async (pos) => {
+          passengerLivePosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+
+          if (passengerOriginMode === "auto") {
+            passengerOriginCoords = passengerLivePosition;
+            if (!origemInput.value || origemInput.value === passengerAutoLabel) {
+              const endereco = await reverseGeocode(passengerOriginCoords);
+              if (endereco) {
+                passengerAutoLabel = endereco;
+                origemInput.value = endereco;
+              }
+            }
+          }
+
+          updatePassengerMarkers();
+
+          if (passengerDestinationCoords) {
+            const now = Date.now();
+            if (now - passengerLastRouteUpdate > 10000) {
+              passengerLastRouteUpdate = now;
+              updatePassengerRoute();
+            }
+          } else if (passengerMapReady && passengerOriginMode === "auto" && passengerLivePosition) {
+            passengerMap.setCenter([passengerLivePosition.lng, passengerLivePosition.lat]);
+            passengerMap.setZoom(15);
+          }
+        },
+        () => {
+          showMessage(passengerMessage, "error", "Nao foi possivel obter sua localizacao.");
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 }
+      );
     }
 
     function initDriverMap() {
@@ -608,12 +662,17 @@
     }
 
     createAutocomplete(origemInput, origemList, (coords) => {
+      passengerOriginMode = "fixed";
       passengerOriginCoords = coords;
       updatePassengerRoute();
     });
     createAutocomplete(destinoInput, destinoList, (coords) => {
       passengerDestinationCoords = coords;
       updatePassengerRoute();
+    });
+
+    origemInput.addEventListener("focus", () => {
+      passengerOriginMode = "fixed";
     });
 
     usarLocalizacaoBtn.addEventListener("click", async () => {
@@ -625,9 +684,11 @@
 
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
+          passengerOriginMode = "auto";
           passengerOriginCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
           const endereco = await reverseGeocode(passengerOriginCoords);
           if (endereco) {
+            passengerAutoLabel = endereco;
             origemInput.value = endereco;
           }
           updatePassengerRoute();
