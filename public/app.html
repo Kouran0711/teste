@@ -103,6 +103,10 @@
             Atualizar rota
           </button>
         </div>
+        <div class="driver-action-bar hidden" id="driverActionBar">
+          <div class="driver-action-title" id="driverActionTitle">Corrida ativa</div>
+          <div class="driver-action-buttons" id="driverActionButtons"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -186,6 +190,9 @@
     const driverMapOverlay = document.getElementById("driverMapOverlay");
     const driverInstruction = document.getElementById("driverInstruction");
     const driverRecalcFloating = document.getElementById("driverRecalcFloating");
+    const driverActionBar = document.getElementById("driverActionBar");
+    const driverActionTitle = document.getElementById("driverActionTitle");
+    const driverActionButtons = document.getElementById("driverActionButtons");
     const pendingRides = document.getElementById("pendingRides");
     const currentRideBox = document.getElementById("currentRide");
 
@@ -979,27 +986,40 @@
     function renderCurrentRide() {
       if (!currentRide) {
         currentRideBox.textContent = "Nenhuma corrida aceita.";
+        if (driverActionBar) {
+          driverActionBar.classList.add("hidden");
+        }
+        if (driverActionButtons) {
+          driverActionButtons.innerHTML = "";
+        }
+        if (driverActionTitle) {
+          driverActionTitle.textContent = "Nenhuma corrida";
+        }
         return;
       }
 
       let actions = "";
+      let titulo = `Corrida #${currentRide.id}`;
       if (currentRide.status === "motorista_a_caminho") {
         actions = `
           <button class="button" type="button" onclick="chegueiAoLocal()">Cheguei ao local</button>
           <button class="button secondary" type="button" onclick="cancelarCorridaMotorista()">Cancelar corrida</button>
         `;
+        titulo = "Motorista a caminho";
       }
       if (currentRide.status === "motorista_no_local") {
         actions = `
           <button class="button" type="button" onclick="iniciarCorrida()">Iniciar corrida</button>
           <button class="button secondary" type="button" onclick="cancelarCorridaMotorista()">Cancelar corrida</button>
         `;
+        titulo = "Motorista no local";
       }
       if (currentRide.status === "em_andamento") {
         actions = `
           <button class="button" type="button" onclick="finalizarCorrida()">Finalizar corrida</button>
           <button class="button secondary" type="button" onclick="cancelarCorridaMotorista()">Cancelar corrida</button>
         `;
+        titulo = "Corrida em andamento";
       }
 
       currentRideBox.innerHTML = `
@@ -1008,8 +1028,17 @@
         Destino: ${currentRide.destino}<br>
         Valor: R$ ${Number(currentRide.valor || 0).toFixed(2)}<br>
         Status: ${currentRide.status}<br>
-        ${actions}
       `;
+
+      if (driverActionBar) {
+        driverActionBar.classList.remove("hidden");
+      }
+      if (driverActionTitle) {
+        driverActionTitle.textContent = titulo;
+      }
+      if (driverActionButtons) {
+        driverActionButtons.innerHTML = actions;
+      }
     }
 
     function resetDriverRide(message, type) {
@@ -1573,6 +1602,7 @@
         document.body.classList.remove("driver-mode");
         menuToggle?.classList.add("hidden");
         driverControls?.classList.add("hidden");
+        driverActionBar?.classList.add("hidden");
         initPassengerMap();
         loadPassengerActiveRide();
       } else {
