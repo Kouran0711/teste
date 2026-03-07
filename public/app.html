@@ -100,6 +100,7 @@
         <div id="driverMap" class="map-box hidden"></div>
         <div class="map-overlay hidden" id="driverMapOverlay">
           <div class="map-instruction hidden" id="driverInstruction">Aguardando corridas...</div>
+          <div class="route-chip hidden" id="driverRouteLabel">Rota atual: Origem → Destino</div>
           <button class="button small" type="button" id="driverRecalcFloating">
             Atualizar rota
           </button>
@@ -191,6 +192,7 @@
     const driverGpsBtn = document.getElementById("driverGpsBtn");
     const driverMapOverlay = document.getElementById("driverMapOverlay");
     const driverInstruction = document.getElementById("driverInstruction");
+    const driverRouteLabel = document.getElementById("driverRouteLabel");
     const driverRecalcFloating = document.getElementById("driverRecalcFloating");
     const driverActionBar = document.getElementById("driverActionBar");
     const driverActionTitle = document.getElementById("driverActionTitle");
@@ -911,7 +913,7 @@
     }
 
     function updateDriverInstruction() {
-      if (!driverInstruction || !driverMapOverlay) return;
+      if (!driverMapOverlay) return;
 
       if (usuario.tipo !== "motorista") {
         driverMapOverlay.classList.add("hidden");
@@ -921,29 +923,37 @@
       driverMapOverlay.classList.remove("hidden");
 
       if (!driverOnline) {
-        driverInstruction.textContent = "Fique online para receber corridas.";
+        if (driverRouteLabel) {
+          driverRouteLabel.classList.add("hidden");
+        }
+        if (driverInstruction) {
+          driverInstruction.textContent = "Fique online para receber corridas.";
+        }
         return;
       }
 
       if (!currentRide) {
-        driverInstruction.textContent = "Aguardando corridas...";
+        if (driverRouteLabel) {
+          driverRouteLabel.classList.add("hidden");
+        }
+        if (driverInstruction) {
+          driverInstruction.textContent = "Aguardando corridas...";
+        }
         return;
       }
 
-      let texto = `Corrida #${currentRide.id}`;
-      if (currentRide.status === "motorista_a_caminho") {
-        texto = `Va ate a origem: ${currentRide.origem}`;
-      } else if (currentRide.status === "motorista_no_local") {
-        texto = `No local: ${currentRide.origem}. Aguarde o passageiro.`;
-      } else if (currentRide.status === "em_andamento") {
-        texto = `Va ate o destino: ${currentRide.destino}`;
+      if (driverRouteLabel) {
+        let rotaTexto = "";
+        if (currentRide.status === "em_andamento") {
+          rotaTexto = "Rota atual: Origem → Destino";
+        } else if (currentRide.status === "motorista_no_local") {
+          rotaTexto = "Rota atual: Origem → Destino";
+        } else {
+          rotaTexto = "Rota atual: Motorista → Origem";
+        }
+        driverRouteLabel.textContent = rotaTexto;
+        driverRouteLabel.classList.remove("hidden");
       }
-
-      if (!driverGpsEnabled) {
-        texto += " (GPS desligado - rota aproximada)";
-      }
-
-      driverInstruction.textContent = texto;
     }
 
     function playSiren() {

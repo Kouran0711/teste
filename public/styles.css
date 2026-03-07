@@ -393,6 +393,21 @@ body.driver-mode .waiting-box {
   width: 100%;
 }
 
+.route-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+
 .driver-action-bar {
   position: fixed;
   left: 50%;
