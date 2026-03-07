@@ -42,30 +42,33 @@
           <div class="status-pill online" id="passengerWaitingText">Aguardando motorista...</div>
           <button class="button secondary" type="button" id="cancelRideBtn">Cancelar solicitacao</button>
         </div>
+        <div id="passengerRideInfo" class="ride-item hidden"></div>
 
-        <div class="form-field autocomplete">
-          <label for="origemInput">Origem</label>
-          <input id="origemInput" placeholder="Rua, numero">
-          <div class="autocomplete-list hidden" id="origemList"></div>
-        </div>
-        <button class="button secondary" type="button" id="usarLocalizacao">Usar minha localizacao</button>
+        <div id="passengerForm">
+          <div class="form-field autocomplete">
+            <label for="origemInput">Origem</label>
+            <input id="origemInput" placeholder="Rua, numero">
+            <div class="autocomplete-list hidden" id="origemList"></div>
+          </div>
+          <button class="button secondary" type="button" id="usarLocalizacao">Usar minha localizacao</button>
 
-        <div class="form-field autocomplete">
-          <label for="destinoInput">Destino</label>
-          <input id="destinoInput" placeholder="Rua, numero">
-          <div class="autocomplete-list hidden" id="destinoList"></div>
-        </div>
+          <div class="form-field autocomplete">
+            <label for="destinoInput">Destino</label>
+            <input id="destinoInput" placeholder="Rua, numero">
+            <div class="autocomplete-list hidden" id="destinoList"></div>
+          </div>
 
-        <div class="form-field">
-          <label for="pagamentoSelect">Forma de pagamento</label>
-          <select id="pagamentoSelect">
-            <option value="dinheiro">Dinheiro</option>
-            <option value="cartao">Cartao</option>
-            <option value="pix">Pix</option>
-          </select>
+          <div class="form-field">
+            <label for="pagamentoSelect">Forma de pagamento</label>
+            <select id="pagamentoSelect">
+              <option value="dinheiro">Dinheiro</option>
+              <option value="cartao">Cartao</option>
+              <option value="pix">Pix</option>
+            </select>
+          </div>
+          <div class="muted" id="valorEstimado">Valor estimado: R$ 0,00</div>
+          <button class="button" type="button" id="solicitarCorrida">Solicitar corrida</button>
         </div>
-        <div class="muted" id="valorEstimado">Valor estimado: R$ 0,00</div>
-        <button class="button" type="button" id="solicitarCorrida">Solicitar corrida</button>
       </div>
 
       <div class="card hidden drawer" id="driverPanel">
@@ -76,9 +79,11 @@
         <p>Fique online para receber corridas mais proximas.</p>
         <div id="driverMessage" class="message"></div>
         <div class="status-pill" id="driverStatus">Offline</div>
+        <div class="status-pill muted hidden" id="driverGpsWarning">GPS desligado - rota aproximada</div>
         <button class="button" type="button" id="driverToggle">Ficar online</button>
         <div class="muted" id="driverLocation">Localizacao: nao definida</div>
         <button class="button secondary" type="button" id="driverGpsBtn">Ativar GPS</button>
+        <button class="button secondary" type="button" id="driverRecalcBtn">Atualizar rota</button>
         <button class="button secondary" type="button" id="drawerLogout">Sair</button>
         <div style="margin-top: 16px;">
           <h3>Corrida atual</h3>
@@ -156,6 +161,8 @@
     const passengerWaitingBox = document.getElementById("passengerWaiting");
     const passengerWaitingText = document.getElementById("passengerWaitingText");
     const cancelRideBtn = document.getElementById("cancelRideBtn");
+    const passengerRideInfo = document.getElementById("passengerRideInfo");
+    const passengerForm = document.getElementById("passengerForm");
 
     const origemInput = document.getElementById("origemInput");
     const destinoInput = document.getElementById("destinoInput");
@@ -167,9 +174,11 @@
     const usarLocalizacaoBtn = document.getElementById("usarLocalizacao");
 
     const driverStatus = document.getElementById("driverStatus");
+    const driverGpsWarning = document.getElementById("driverGpsWarning");
     const driverToggle = document.getElementById("driverToggle");
     const driverLocation = document.getElementById("driverLocation");
     const driverGpsBtn = document.getElementById("driverGpsBtn");
+    const driverRecalcBtn = document.getElementById("driverRecalcBtn");
     const pendingRides = document.getElementById("pendingRides");
     const currentRideBox = document.getElementById("currentRide");
 
@@ -198,6 +207,7 @@
     let passengerActiveRideId = null;
     let passengerRideStatus = null;
     let passengerStatusPoll = null;
+    let passengerDriverInfo = null;
 
     let driverMap = null;
     let driverMarker = null;
@@ -284,6 +294,32 @@
         if (!el) return;
         el.disabled = !enabled;
       });
+      passengerForm?.classList.toggle("hidden", !enabled);
+    }
+
+    function renderPassengerRideInfo() {
+      if (!passengerRideInfo) return;
+      if (!passengerDriverInfo || passengerRideStatus === "aguardando_motorista") {
+        passengerRideInfo.classList.add("hidden");
+        passengerRideInfo.innerHTML = "";
+        return;
+      }
+
+      const dadosMotorista = passengerDriverInfo || {};
+      const usuarioMotorista = dadosMotorista.usuarios || {};
+      const nome = usuarioMotorista.nome || "Motorista";
+      const telefone = usuarioMotorista.telefone || "Nao informado";
+      const carro = dadosMotorista.carro || "Nao informado";
+      const placa = dadosMotorista.placa || "Nao informado";
+      const cor = dadosMotorista.cor ? ` (${dadosMotorista.cor})` : "";
+
+      passengerRideInfo.innerHTML = `
+        <strong>Motorista</strong>: ${nome}<br>
+        <strong>Carro</strong>: ${carro}${cor}<br>
+        <strong>Placa</strong>: ${placa}<br>
+        <strong>Contato</strong>: ${telefone}
+      `;
+      passengerRideInfo.classList.remove("hidden");
     }
 
     function setPassengerStatus(status) {
@@ -303,6 +339,7 @@
         cancelRideBtn.classList.remove("hidden");
         cancelRideBtn.disabled = status !== "aguardando_motorista";
       }
+      renderPassengerRideInfo();
     }
 
     function startPassengerPoll() {
@@ -320,6 +357,7 @@
     function setPassengerWaiting(ride) {
       passengerWaiting = true;
       passengerActiveRideId = ride?.id || null;
+      passengerDriverInfo = ride?.motoristas || null;
       if (passengerActiveRideId) {
         localStorage.setItem("passageiroCorridaAtiva", JSON.stringify({ id: passengerActiveRideId }));
       }
@@ -332,11 +370,13 @@
     function clearPassengerWaiting() {
       passengerWaiting = false;
       passengerActiveRideId = null;
+      passengerDriverInfo = null;
       localStorage.removeItem("passageiroCorridaAtiva");
       passengerWaitingBox.classList.add("hidden");
       setPassengerFormEnabled(true);
       stopPassengerPoll();
       passengerRideStatus = null;
+      renderPassengerRideInfo();
     }
 
     function setPassengerSubmitting() {
@@ -359,6 +399,8 @@
           return;
         }
         const status = dados.corrida.status;
+        passengerDriverInfo = dados.corrida.motoristas || null;
+        renderPassengerRideInfo();
         if (status === "finalizada") {
           clearPassengerWaiting();
           showMessage(passengerMessage, "success", "Corrida finalizada.");
@@ -739,6 +781,8 @@
         origin = { lat: currentRide.origemLat, lng: currentRide.origemLng };
         destination = { lat: currentRide.destinoLat, lng: currentRide.destinoLng };
         color = "#f97316";
+        pickupMarker.setLngLat([origin.lng, origin.lat]).addTo(driverMap);
+        dropoffMarker.setLngLat([destination.lng, destination.lat]).addTo(driverMap);
       } else {
         return;
       }
@@ -790,13 +834,16 @@
     function updateDriverLocationDisplay() {
       if (!driverGpsEnabled) {
         driverLocation.textContent = "Localizacao: GPS desligado";
+        driverGpsWarning?.classList.remove("hidden");
         return;
       }
       if (!driverPosition) {
         driverLocation.textContent = "Localizacao: aguardando GPS";
+        driverGpsWarning?.classList.add("hidden");
         return;
       }
       driverLocation.textContent = `Localizacao: ${driverPosition.lat.toFixed(5)}, ${driverPosition.lng.toFixed(5)}`;
+      driverGpsWarning?.classList.add("hidden");
     }
 
     function playSiren() {
@@ -804,19 +851,28 @@
       const now = audioContext.currentTime;
       const osc = audioContext.createOscillator();
       const gain = audioContext.createGain();
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(520, now);
-      osc.frequency.exponentialRampToValueAtTime(980, now + 0.6);
-      osc.frequency.exponentialRampToValueAtTime(520, now + 1.2);
-      gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(0.8, now + 0.1);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
+      osc.type = "square";
+
+      const pulses = 10;
+      const pulseDuration = 0.28;
+      const gap = 0.08;
+      let t = now;
+      for (let i = 0; i < pulses; i += 1) {
+        const high = i % 2 === 0 ? 980 : 520;
+        osc.frequency.setValueAtTime(high, t);
+        gain.gain.setValueAtTime(0.0, t);
+        gain.gain.linearRampToValueAtTime(0.9, t + 0.04);
+        gain.gain.linearRampToValueAtTime(0.2, t + pulseDuration);
+        t += pulseDuration + gap;
+      }
+
+      gain.gain.linearRampToValueAtTime(0.0, t);
       osc.connect(gain);
       gain.connect(audioContext.destination);
       osc.start(now);
-      osc.stop(now + 1.25);
+      osc.stop(t + 0.1);
       if (navigator.vibrate) {
-        navigator.vibrate([200, 100, 200, 100, 200]);
+        navigator.vibrate([200, 80, 200, 80, 200, 80, 200]);
       }
     }
 
@@ -1119,6 +1175,7 @@
         pendingIds = new Set();
         closeRideModal();
         driverLocation.textContent = "Localizacao: offline";
+        driverGpsWarning?.classList.add("hidden");
         stopDriverGps();
         await atualizarMotoristaStatus();
         return;
@@ -1182,6 +1239,10 @@
       }
     });
 
+    driverRecalcBtn?.addEventListener("click", () => {
+      updateDriverRoute(true);
+    });
+
     rideModalClose?.addEventListener("click", closeRideModal);
     rideModalDismiss?.addEventListener("click", closeRideModal);
     rideModalAccept?.addEventListener("click", () => {
@@ -1217,6 +1278,7 @@
         if (currentRide.origemLat && currentRide.origemLng) {
           setDriverTarget("pickup", { lat: currentRide.origemLat, lng: currentRide.origemLng });
         }
+        updateDriverRoute(true);
       } catch (erro) {
         showMessage(driverMessage, "error", "Nao foi possivel aceitar a corrida.");
       }
@@ -1240,6 +1302,7 @@
 
         if (currentRide.destinoLat && currentRide.destinoLng) {
           setDriverTarget("dropoff", { lat: currentRide.destinoLat, lng: currentRide.destinoLng });
+          updateDriverRoute(true);
         } else {
           showMessage(driverMessage, "error", "Destino sem coordenadas.");
         }
@@ -1330,6 +1393,7 @@
         menuToggle?.classList.remove("hidden");
         driverControls?.classList.remove("hidden");
         driverGpsBtn.textContent = "Ativar GPS";
+        driverGpsWarning?.classList.add("hidden");
         initDriverMap();
         updateDriverStatus();
         updateDriverLocationDisplay();

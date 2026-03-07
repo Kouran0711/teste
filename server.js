@@ -780,7 +780,19 @@ app.get("/corridas/:id", async (req, res) => {
 
   const { data, error } = await supabase
     .from("corridas")
-    .select("*")
+    .select(
+      `
+      *,
+      motoristas (
+        id,
+        carro,
+        placa,
+        cor,
+        usuario_id,
+        usuarios ( nome, telefone, email )
+      )
+    `
+    )
     .eq("id", corridaId)
     .maybeSingle();
 
