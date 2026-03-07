@@ -43,9 +43,6 @@
           <button class="button secondary" type="button" id="cancelRideBtn">Cancelar corrida</button>
         </div>
         <div id="passengerRideInfo" class="ride-item hidden"></div>
-        <button class="button secondary hidden" type="button" id="passengerCancelFloating">
-          Cancelar corrida
-        </button>
 
         <div id="passengerForm">
           <div class="form-field autocomplete">
@@ -171,7 +168,6 @@
     const cancelRideBtn = document.getElementById("cancelRideBtn");
     const passengerRideInfo = document.getElementById("passengerRideInfo");
     const passengerForm = document.getElementById("passengerForm");
-    const passengerCancelFloating = document.getElementById("passengerCancelFloating");
 
     const origemInput = document.getElementById("origemInput");
     const destinoInput = document.getElementById("destinoInput");
@@ -357,10 +353,6 @@
         cancelRideBtn.classList.remove("hidden");
         cancelRideBtn.disabled = !podeCancelar;
       }
-      if (passengerCancelFloating) {
-        passengerCancelFloating.classList.toggle("hidden", !passengerWaiting);
-        passengerCancelFloating.disabled = !podeCancelar;
-      }
       renderPassengerRideInfo();
     }
 
@@ -398,7 +390,6 @@
       setPassengerFormEnabled(true);
       stopPassengerPoll();
       passengerRideStatus = null;
-      passengerCancelFloating?.classList.add("hidden");
       renderPassengerRideInfo();
     }
 
@@ -409,10 +400,6 @@
       if (cancelRideBtn) {
         cancelRideBtn.classList.remove("hidden");
         cancelRideBtn.disabled = true;
-      }
-      if (passengerCancelFloating) {
-        passengerCancelFloating.classList.remove("hidden");
-        passengerCancelFloating.disabled = true;
       }
       setPassengerFormEnabled(false);
     }
@@ -1118,6 +1105,10 @@
       rideModalOpen = true;
       document.body.classList.add("modal-open");
       rideModal.classList.remove("hidden");
+      rideModalAccept?.classList.remove("hidden");
+      if (rideModalDismiss) {
+        rideModalDismiss.textContent = "Ignorar";
+      }
 
       const dist = corrida.distanciaParaMotoristaKm !== null
         ? `${corrida.distanciaParaMotoristaKm.toFixed(2)} km`
@@ -1152,6 +1143,20 @@
         const dados = await resposta.json();
         const lista = dados.corridas || [];
         lastPendingList = lista;
+
+        if (rideModalOpen && rideModalRide) {
+          const aindaExiste = lista.some((corrida) => corrida.id === rideModalRide.id);
+          if (!aindaExiste) {
+            rideModalMeta.textContent = "Corrida cancelada";
+            rideModalDetails.innerHTML = "O passageiro cancelou esta corrida.";
+            rideModalAccept?.classList.add("hidden");
+            if (rideModalDismiss) {
+              rideModalDismiss.textContent = "Fechar";
+            }
+            showMessage(driverMessage, "error", "Corrida cancelada pelo passageiro.");
+            ignoredRideIds.add(rideModalRide.id);
+          }
+        }
 
         const ids = new Set(lista.map((item) => item.id));
         let novo = false;
@@ -1314,10 +1319,6 @@
       } catch (erro) {
         showMessage(passengerMessage, "error", "Nao foi possivel cancelar.");
       }
-    });
-
-    passengerCancelFloating?.addEventListener("click", () => {
-      cancelRideBtn?.click();
     });
 
     async function toggleDriverOnline() {
