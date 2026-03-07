@@ -311,6 +311,7 @@ body.driver-mode .waiting-box {
 
 .map-card {
   padding: 12px;
+  position: relative;
 }
 
 .map-box {
@@ -318,6 +319,26 @@ body.driver-mode .waiting-box {
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid var(--border);
+}
+
+.map-overlay {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 5;
+  display: grid;
+  gap: 8px;
+  max-width: min(260px, 80vw);
+}
+
+.map-instruction {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  line-height: 1.4;
 }
 
 .driver-controls {
@@ -445,6 +466,11 @@ body.driver-mode .map-box {
   border: none;
 }
 
+body.driver-mode .map-overlay {
+  top: 76px;
+  right: 16px;
+}
+
 body.driver-mode .topbar {
   position: fixed;
   top: 0;
@@ -466,9 +492,6 @@ body.driver-mode #driverPanel #driverGpsBtn {
   display: inline-flex;
 }
 
-body.driver-mode #driverPanel #driverRecalcBtn {
-  display: inline-flex;
-}
 
 body.driver-mode #logoutBtn {
   display: none;
@@ -573,5 +596,10 @@ body.driver-mode #logoutBtn {
 
   .modal {
     width: 95vw;
+  }
+
+  .map-overlay {
+    top: 70px;
+    right: 12px;
   }
 }
