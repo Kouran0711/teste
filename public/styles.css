@@ -1,17 +1,19 @@
 :root {
-  --bg1: #fdf6e3;
-  --bg2: #d7f4ff;
+  --bg1: #f4f4f5;
+  --bg2: #eef1f4;
   --card: #ffffff;
-  --text: #1f2933;
-  --muted: #52606d;
-  --accent: #0e7c86;
-  --accent-dark: #0b5c63;
-  --border: #d9e2ec;
-  --shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  --text: #0f172a;
+  --muted: #6b7280;
+  --accent: #111111;
+  --accent-dark: #000000;
+  --border: #e5e7eb;
+  --shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
   --success-bg: #dcfce7;
   --success-text: #166534;
   --error-bg: #fee2e2;
   --error-text: #991b1b;
+  --info-bg: #dbeafe;
+  --info-text: #1d4ed8;
 }
 
 * {
@@ -20,21 +22,12 @@
 
 body {
   margin: 0;
-  font-family: "Space Grotesk", "Trebuchet MS", sans-serif;
+  font-family: "Manrope", "Trebuchet MS", sans-serif;
   color: var(--text);
-  background: linear-gradient(135deg, var(--bg1), var(--bg2));
+  background: var(--bg1);
   min-height: 100vh;
-}
-
-body::before {
-  content: "";
-  position: fixed;
-  inset: -20% -10%;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(14, 124, 134, 0.18), transparent 50%),
-    radial-gradient(circle at 80% 10%, rgba(242, 153, 74, 0.18), transparent 45%),
-    radial-gradient(circle at 70% 80%, rgba(79, 70, 229, 0.12), transparent 50%);
-  z-index: -1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -80,17 +73,17 @@ a:hover {
   gap: 8px;
   padding: 6px 12px;
   border-radius: 999px;
-  background: #e0f2f1;
-  color: #0f766e;
-  font-size: 12px;
+  background: #111111;
+  color: #ffffff;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
 .card {
   background: var(--card);
-  border-radius: 20px;
+  border-radius: 22px;
   padding: 28px;
   box-shadow: var(--shadow);
   border: 1px solid var(--border);
@@ -99,6 +92,7 @@ a:hover {
 .card h2 {
   margin: 0 0 6px;
   font-size: 22px;
+  letter-spacing: -0.02em;
 }
 
 .card p {
@@ -113,9 +107,9 @@ a:hover {
 
 .form-field label {
   display: block;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--muted);
   margin-bottom: 6px;
 }
@@ -123,11 +117,18 @@ a:hover {
 .form-field input,
 .form-field select {
   width: 100%;
-  padding: 11px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   font-size: 14px;
   background: #fff;
+}
+
+.form-field input:focus,
+.form-field select:focus {
+  outline: none;
+  border-color: #111111;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.12);
 }
 
 .autocomplete {
@@ -141,7 +142,7 @@ a:hover {
   right: 0;
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow: var(--shadow);
   max-height: 210px;
   overflow-y: auto;
@@ -161,14 +162,15 @@ a:hover {
 
 .button {
   width: 100%;
-  padding: 11px 12px;
-  border-radius: 12px;
+  padding: 12px 16px;
+  border-radius: 999px;
   border: none;
   font-weight: 600;
   cursor: pointer;
   background: var(--accent);
   color: #fff;
-  transition: transform 0.15s ease, background 0.15s ease;
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.18);
 }
 
 .button:hover {
@@ -182,21 +184,30 @@ a:hover {
   transform: none;
 }
 
+.button:focus-visible {
+  outline: 2px solid #111111;
+  outline-offset: 2px;
+}
+
 .button.secondary {
   background: #fff;
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  color: #111111;
+  border: 1px solid #111111;
+  box-shadow: none;
 }
 
 .button.secondary:hover {
-  background: #f0fdfa;
+  background: #f4f4f5;
 }
 
 .toggle-group {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
   margin-top: 6px;
+  background: #f3f4f6;
+  padding: 4px;
+  border-radius: 999px;
 }
 
 .toggle-group input {
@@ -205,11 +216,11 @@ a:hover {
 
 .toggle-group label {
   padding: 10px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
+  border-radius: 999px;
+  border: none;
   text-align: center;
   font-weight: 600;
-  color: var(--muted);
+  color: #111111;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -217,7 +228,6 @@ a:hover {
 .toggle-group input:checked + label {
   background: var(--accent);
   color: #fff;
-  border-color: var(--accent);
 }
 
 .message {
@@ -262,7 +272,10 @@ body.driver-mode .waiting-box {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 24px 20px 0;
+  padding: 20px 20px 12px;
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(10px);
 }
 
 .topbar .button {
@@ -289,12 +302,13 @@ body.driver-mode .waiting-box {
 
 .topbar h1 {
   margin: 0;
-  font-size: 26px;
+  font-size: 22px;
+  letter-spacing: -0.02em;
 }
 
 .topbar span {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .app-shell {
@@ -317,7 +331,7 @@ body.driver-mode .waiting-box {
 
 .map-box {
   height: 430px;
-  border-radius: 16px;
+  border-radius: 20px;
   overflow: hidden;
   border: 1px solid var(--border);
 }
@@ -357,7 +371,7 @@ body.driver-mode .waiting-box {
   width: min(520px, calc(100% - 24px));
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 20px;
   padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
   box-shadow: var(--shadow);
   display: grid;
@@ -384,7 +398,7 @@ body.driver-mode .waiting-box {
 .icon-button {
   width: 36px;
   height: 36px;
-  border-radius: 12px;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: #fff;
   display: inline-flex;
@@ -544,8 +558,8 @@ body.driver-mode #logoutBtn {
   padding: 6px 12px;
   border-radius: 999px;
   font-size: 12px;
-  background: #e2e8f0;
-  color: #334155;
+  background: #f3f4f6;
+  color: #111827;
   font-weight: 600;
 }
 
@@ -555,8 +569,8 @@ body.driver-mode #logoutBtn {
 }
 
 .status-pill.busy {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--info-bg);
+  color: var(--info-text);
 }
 
 .ride-list {
