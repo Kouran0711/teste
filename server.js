@@ -545,10 +545,6 @@ app.put("/corridas/:id/aceitar", async (req, res) => {
       return res.status(404).json({ ok: false, mensagem: "Motorista nao encontrado" });
     }
 
-    if (!motorista.disponivel) {
-      return res.status(400).json({ ok: false, mensagem: "Motorista indisponivel" });
-    }
-
     const { data: corridaAtualizada, error: updateError } = await supabase
       .from("corridas")
       .update({

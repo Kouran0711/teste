@@ -107,15 +107,13 @@
         </div>
         <button class="icon-button" id="rideModalClose" aria-label="Fechar modal">X</button>
       </div>
-        <div class="modal-body">
-          <div id="rideModalDetails" class="ride-item"></div>
-          <div id="rideModalMap" class="modal-map"></div>
-          <div class="modal-actions">
-            <button class="button secondary" type="button" id="rideModalRecalc">Recalcular rota</button>
-            <button class="button" type="button" id="rideModalAccept">Aceitar corrida</button>
-            <button class="button secondary" type="button" id="rideModalDismiss">Ignorar</button>
-          </div>
+      <div class="modal-body">
+        <div id="rideModalDetails" class="ride-item"></div>
+        <div class="modal-actions">
+          <button class="button" type="button" id="rideModalAccept">Aceitar corrida</button>
+          <button class="button secondary" type="button" id="rideModalDismiss">Ignorar</button>
         </div>
+      </div>
     </div>
   </div>
 
@@ -176,11 +174,9 @@
     const rideModal = document.getElementById("rideModal");
     const rideModalMeta = document.getElementById("rideModalMeta");
     const rideModalDetails = document.getElementById("rideModalDetails");
-    const rideModalMapEl = document.getElementById("rideModalMap");
     const rideModalClose = document.getElementById("rideModalClose");
     const rideModalDismiss = document.getElementById("rideModalDismiss");
     const rideModalAccept = document.getElementById("rideModalAccept");
-    const rideModalRecalc = document.getElementById("rideModalRecalc");
 
     let passengerMap = null;
     let passengerOriginMarker = null;
@@ -209,21 +205,14 @@
     let driverPosition = null;
     let driverOnline = false;
     let driverInRide = false;
-    let driverWatchId = null;
     let pendingPoll = null;
     let pendingIds = new Set();
     let currentRide = null;
     let driverRouteTarget = null;
     let audioContext = null;
     let driverMapReady = false;
-    let driverRetryTimeout = null;
-    let rideModalMap = null;
-    let rideModalDriverMarker = null;
-    let rideModalPickupMarker = null;
-    let rideModalRouteId = "ride-modal-route";
     let rideModalRide = null;
     let rideModalOpen = false;
-    let rideModalMapReady = false;
 
     function showMessage(element, type, text) {
       element.className = `message ${type} show`;
@@ -306,7 +295,10 @@
       passengerWaitingText.textContent = base ? `${texto} (${base})` : texto;
       passengerWaitingText.classList.toggle("online", status !== "em_andamento");
       passengerWaitingText.classList.toggle("busy", status === "em_andamento");
-      cancelRideBtn?.classList.toggle("hidden", status !== "aguardando_motorista");
+      if (cancelRideBtn) {
+        cancelRideBtn.classList.remove("hidden");
+        cancelRideBtn.disabled = status !== "aguardando_motorista";
+      }
     }
 
     function startPassengerPoll() {
@@ -347,7 +339,10 @@
       passengerWaiting = true;
       passengerWaitingBox.classList.remove("hidden");
       passengerWaitingText.textContent = "Enviando solicitacao...";
-      cancelRideBtn?.classList.add("hidden");
+      if (cancelRideBtn) {
+        cancelRideBtn.classList.remove("hidden");
+        cancelRideBtn.disabled = true;
+      }
       setPassengerFormEnabled(false);
     }
 
@@ -829,10 +824,16 @@
 
       let actions = "";
       if (currentRide.status === "motorista_a_caminho") {
-        actions = `<button class="button" type="button" onclick="iniciarCorrida()">Iniciar corrida</button>`;
+        actions = `
+          <button class="button" type="button" onclick="iniciarCorrida()">Iniciar corrida</button>
+          <button class="button secondary" type="button" onclick="cancelarCorridaMotorista()">Cancelar corrida</button>
+        `;
       }
       if (currentRide.status === "em_andamento") {
-        actions = `<button class="button" type="button" onclick="finalizarCorrida()">Finalizar corrida</button>`;
+        actions = `
+          <button class="button" type="button" onclick="finalizarCorrida()">Finalizar corrida</button>
+          <button class="button secondary" type="button" onclick="cancelarCorridaMotorista()">Cancelar corrida</button>
+        `;
       }
 
       currentRideBox.innerHTML = `
@@ -893,11 +894,6 @@
         <strong>Distancia</strong>: ${dist}
       `;
 
-      initRideModalMap();
-      if (rideModalMap) {
-        rideModalMap.resize();
-      }
-      updateRideModalRoute(true);
       ensureAudioContext();
       playSiren();
     }
@@ -909,52 +905,6 @@
       if (rideModal) {
         rideModal.classList.add("hidden");
       }
-    }
-
-    function initRideModalMap() {
-      if (!ensureMapbox() || !rideModalMapEl) return;
-      if (rideModalMap) return;
-
-      rideModalMap = new mapboxgl.Map({
-        container: "rideModalMap",
-        style: MAPBOX_STYLE,
-        center: [-46.6333, -23.5505],
-        zoom: 12,
-        interactive: false
-      });
-
-      rideModalMap.on("load", () => {
-        rideModalMapReady = true;
-        updateRideModalRoute(true);
-      });
-
-      rideModalDriverMarker = new mapboxgl.Marker({ color: "#0e7c86" }).setLngLat([-46.6333, -23.5505]);
-      rideModalPickupMarker = new mapboxgl.Marker({ color: "#f97316" }).setLngLat([-46.6333, -23.5505]);
-    }
-
-    async function updateRideModalRoute(force) {
-      if (!rideModalOpen || !rideModalMap || !rideModalRide || !rideModalMapReady) return;
-      if (!driverPosition) {
-        rideModalMeta.textContent = "Aguardando localizacao para calcular a rota...";
-        return;
-      }
-      if (!rideModalRide.origemLat || !rideModalRide.origemLng) {
-        rideModalMeta.textContent = "Sem coordenadas da origem.";
-        return;
-      }
-
-      const origin = driverPosition;
-      const destination = { lat: rideModalRide.origemLat, lng: rideModalRide.origemLng };
-      const route = await fetchRoute(origin, destination);
-      if (!route) {
-        rideModalMeta.textContent = "Nao foi possivel calcular a rota.";
-        return;
-      }
-
-      setRoute(rideModalMap, rideModalRouteId, { type: "Feature", geometry: route.geometry }, "#f97316");
-      rideModalDriverMarker.setLngLat([origin.lng, origin.lat]).addTo(rideModalMap);
-      rideModalPickupMarker.setLngLat([destination.lng, destination.lat]).addTo(rideModalMap);
-      fitBounds(rideModalMap, origin, destination);
     }
 
     async function carregarCorridasPendentes() {
@@ -1128,87 +1078,27 @@
       }
     });
 
-    function startDriverWatch() {
-      if (driverWatchId !== null) return;
-      driverWatchId = navigator.geolocation.watchPosition(
-        async (pos) => {
-          driverPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          updateDriverLocationDisplay();
-          updateDriverMarkers();
-          await atualizarMotoristaStatus();
-          updateDriverRoute(false);
-          updateRideModalRoute(false);
-          await carregarCorridasPendentes();
-        },
-        (error) => {
-          showMessage(driverMessage, "error", geolocationErrorMessageWithDetail(error));
-          driverLocation.textContent = "Localizacao: permissao pendente";
-          if (driverWatchId !== null) {
-            navigator.geolocation.clearWatch(driverWatchId);
-            driverWatchId = null;
-          }
-          if (driverOnline && !driverRetryTimeout) {
-            driverRetryTimeout = setTimeout(() => {
-              driverRetryTimeout = null;
-              if (driverOnline) {
-                startDriverWatch();
-              }
-            }, 6000);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
-      );
-    }
-
     async function toggleDriverOnline() {
       clearMessage(driverMessage);
-
-      if (!navigator.geolocation) {
-        showMessage(driverMessage, "error", "Geolocalizacao nao suportada.");
-        return;
-      }
 
       ensureAudioContext();
       driverOnline = !driverOnline;
       updateDriverStatus();
 
       if (!driverOnline) {
-        if (driverWatchId !== null) {
-          navigator.geolocation.clearWatch(driverWatchId);
-          driverWatchId = null;
-        }
-        if (driverRetryTimeout) {
-          clearTimeout(driverRetryTimeout);
-          driverRetryTimeout = null;
-        }
         clearInterval(pendingPoll);
         pendingPoll = null;
         pendingIds = new Set();
         closeRideModal();
+        driverLocation.textContent = "Localizacao: offline";
         await atualizarMotoristaStatus();
         return;
       }
 
+      driverLocation.textContent = "Localizacao: desativada";
       await atualizarMotoristaStatus();
       pendingIds = new Set();
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          driverPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          updateDriverLocationDisplay();
-          updateDriverMarkers();
-          await atualizarMotoristaStatus();
-          updateDriverRoute(true);
-          updateRideModalRoute(true);
-        },
-        (error) => {
-          showMessage(driverMessage, "error", geolocationErrorMessageWithDetail(error));
-          driverLocation.textContent = "Localizacao: permissao pendente";
-        },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 10000 }
-      );
-
-      startDriverWatch();
-
+      await carregarCorridasPendentes();
       pendingPoll = setInterval(carregarCorridasPendentes, 6000);
     }
 
@@ -1218,7 +1108,6 @@
 
     rideModalClose?.addEventListener("click", closeRideModal);
     rideModalDismiss?.addEventListener("click", closeRideModal);
-    rideModalRecalc?.addEventListener("click", () => updateRideModalRoute(true));
     rideModalAccept?.addEventListener("click", () => {
       if (rideModalRide && window.aceitarCorrida) {
         window.aceitarCorrida(rideModalRide.id);

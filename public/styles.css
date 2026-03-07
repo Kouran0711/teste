@@ -176,6 +176,12 @@ a:hover {
   transform: translateY(-1px);
 }
 
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .button.secondary {
   background: #fff;
   color: var(--accent);
@@ -391,6 +397,8 @@ body.menu-open .drawer {
   border-radius: 20px;
   padding: 20px;
   box-shadow: var(--shadow);
+  max-height: 88vh;
+  overflow-y: auto;
 }
 
 .modal-header {
@@ -404,13 +412,6 @@ body.menu-open .drawer {
 .modal-body {
   display: grid;
   gap: 12px;
-}
-
-.modal-map {
-  height: 240px;
-  border-radius: 16px;
-  border: 1px solid var(--border);
-  overflow: hidden;
 }
 
 .modal-actions {
@@ -499,6 +500,10 @@ body.driver-mode #logoutBtn {
 .ride-item strong {
   display: block;
   margin-bottom: 4px;
+}
+
+.ride-item .button {
+  margin-top: 8px;
 }
 
 .muted {
