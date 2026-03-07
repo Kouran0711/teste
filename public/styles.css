@@ -648,7 +648,7 @@ body.driver-mode #logoutBtn {
 
   body.driver-mode .map-overlay {
     position: fixed;
-    top: calc(92px + env(safe-area-inset-top));
+    top: calc(120px + env(safe-area-inset-top));
     left: 10px;
     right: 10px;
     width: calc(100% - 20px);

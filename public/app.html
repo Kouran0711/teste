@@ -1024,6 +1024,9 @@
 
       currentRideBox.innerHTML = `
         <strong>Corrida #${currentRide.id}</strong><br>
+        <strong>Passageiro</strong>: ${currentRide.passageiro?.nome || "Nao informado"}<br>
+        <strong>Telefone</strong>: ${currentRide.passageiro?.telefone || "Nao informado"}<br>
+        ${currentRide.passageiro?.email ? `<strong>Email</strong>: ${currentRide.passageiro.email}<br>` : ""}
         Origem: ${currentRide.origem}<br>
         Destino: ${currentRide.destino}<br>
         Valor: R$ ${Number(currentRide.valor || 0).toFixed(2)}<br>

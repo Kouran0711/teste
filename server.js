@@ -53,6 +53,33 @@ function attachCoords(corrida) {
   };
 }
 
+const CORRIDA_DETALHADA_SELECT = `
+  *,
+  passageiro:usuarios!corridas_passageiro_id_fkey ( id, nome, telefone, email ),
+  motoristas (
+    id,
+    carro,
+    placa,
+    cor,
+    usuario_id,
+    usuarios ( nome, telefone, email )
+  )
+`;
+
+async function obterCorridaDetalhada(corridaId) {
+  const { data, error } = await supabase
+    .from("corridas")
+    .select(CORRIDA_DETALHADA_SELECT)
+    .eq("id", corridaId)
+    .maybeSingle();
+
+  if (error) {
+    return { data: null, error };
+  }
+
+  return { data: attachCoords(data), error: null };
+}
+
 function hashSenha(senha) {
   const salt = process.env.SENHA_SALT || "";
   return crypto.createHash("sha256").update(String(senha) + salt).digest("hex");
@@ -565,7 +592,16 @@ app.put("/corridas/:id/aceitar", async (req, res) => {
       .update({ disponivel: false, updated_at: nowIso() })
       .eq("id", motoristaId);
 
-    res.json({ ok: true, mensagem: "Corrida aceita com sucesso", corrida: attachCoords(corridaAtualizada) });
+    const { data: corridaDetalhada, error: detalheError } = await obterCorridaDetalhada(corridaId);
+    if (detalheError) {
+      return res.json({
+        ok: true,
+        mensagem: "Corrida aceita com sucesso",
+        corrida: attachCoords(corridaAtualizada)
+      });
+    }
+
+    res.json({ ok: true, mensagem: "Corrida aceita com sucesso", corrida: corridaDetalhada });
   } catch (erro) {
     res.status(500).json({ ok: false, mensagem: "Erro ao aceitar corrida", erro: String(erro) });
   }
@@ -613,7 +649,16 @@ app.put("/corridas/:id/cheguei", async (req, res) => {
       return res.status(500).json({ ok: false, mensagem: updateError.message });
     }
 
-    res.json({ ok: true, mensagem: "Motorista chegou ao local", corrida: attachCoords(atualizada) });
+    const { data: corridaDetalhada, error: detalheError } = await obterCorridaDetalhada(corridaId);
+    if (detalheError) {
+      return res.json({
+        ok: true,
+        mensagem: "Motorista chegou ao local",
+        corrida: attachCoords(atualizada)
+      });
+    }
+
+    res.json({ ok: true, mensagem: "Motorista chegou ao local", corrida: corridaDetalhada });
   } catch (erro) {
     res.status(500).json({ ok: false, mensagem: "Erro ao atualizar corrida", erro: String(erro) });
   }
@@ -656,7 +701,16 @@ app.put("/corridas/:id/iniciar", async (req, res) => {
       return res.status(500).json({ ok: false, mensagem: updateError.message });
     }
 
-    res.json({ ok: true, mensagem: "Corrida iniciada com sucesso", corrida: attachCoords(atualizada) });
+    const { data: corridaDetalhada, error: detalheError } = await obterCorridaDetalhada(corridaId);
+    if (detalheError) {
+      return res.json({
+        ok: true,
+        mensagem: "Corrida iniciada com sucesso",
+        corrida: attachCoords(atualizada)
+      });
+    }
+
+    res.json({ ok: true, mensagem: "Corrida iniciada com sucesso", corrida: corridaDetalhada });
   } catch (erro) {
     res.status(500).json({ ok: false, mensagem: "Erro ao iniciar corrida", erro: String(erro) });
   }
@@ -713,7 +767,16 @@ app.put("/corridas/:id/cancelar", async (req, res) => {
 
     coordsPorCorrida.delete(corridaId);
 
-    res.json({ ok: true, mensagem: "Corrida cancelada com sucesso", corrida: attachCoords(atualizada) });
+    const { data: corridaDetalhada, error: detalheError } = await obterCorridaDetalhada(corridaId);
+    if (detalheError) {
+      return res.json({
+        ok: true,
+        mensagem: "Corrida cancelada com sucesso",
+        corrida: attachCoords(atualizada)
+      });
+    }
+
+    res.json({ ok: true, mensagem: "Corrida cancelada com sucesso", corrida: corridaDetalhada });
   } catch (erro) {
     res.status(500).json({ ok: false, mensagem: "Erro ao cancelar corrida", erro: String(erro) });
   }
@@ -768,7 +831,16 @@ app.put("/corridas/:id/cancelar-motorista", async (req, res) => {
 
     coordsPorCorrida.delete(corridaId);
 
-    res.json({ ok: true, mensagem: "Corrida cancelada pelo motorista", corrida: attachCoords(atualizada) });
+    const { data: corridaDetalhada, error: detalheError } = await obterCorridaDetalhada(corridaId);
+    if (detalheError) {
+      return res.json({
+        ok: true,
+        mensagem: "Corrida cancelada pelo motorista",
+        corrida: attachCoords(atualizada)
+      });
+    }
+
+    res.json({ ok: true, mensagem: "Corrida cancelada pelo motorista", corrida: corridaDetalhada });
   } catch (erro) {
     res.status(500).json({ ok: false, mensagem: "Erro ao cancelar corrida", erro: String(erro) });
   }
@@ -820,7 +892,16 @@ app.put("/corridas/:id/finalizar", async (req, res) => {
 
     coordsPorCorrida.delete(corridaId);
 
-    res.json({ ok: true, mensagem: "Corrida finalizada com sucesso", corrida: attachCoords(atualizada) });
+    const { data: corridaDetalhada, error: detalheError } = await obterCorridaDetalhada(corridaId);
+    if (detalheError) {
+      return res.json({
+        ok: true,
+        mensagem: "Corrida finalizada com sucesso",
+        corrida: attachCoords(atualizada)
+      });
+    }
+
+    res.json({ ok: true, mensagem: "Corrida finalizada com sucesso", corrida: corridaDetalhada });
   } catch (erro) {
     res.status(500).json({ ok: false, mensagem: "Erro ao finalizar corrida", erro: String(erro) });
   }
@@ -833,23 +914,7 @@ app.get("/corridas/:id", async (req, res) => {
     return res.status(400).json({ ok: false, mensagem: "corridaId invalido" });
   }
 
-  const { data, error } = await supabase
-    .from("corridas")
-    .select(
-      `
-      *,
-      motoristas (
-        id,
-        carro,
-        placa,
-        cor,
-        usuario_id,
-        usuarios ( nome, telefone, email )
-      )
-    `
-    )
-    .eq("id", corridaId)
-    .maybeSingle();
+  const { data, error } = await obterCorridaDetalhada(corridaId);
 
   if (error) {
     return res.status(500).json({ ok: false, mensagem: error.message });
@@ -859,7 +924,7 @@ app.get("/corridas/:id", async (req, res) => {
     return res.status(404).json({ ok: false, mensagem: "Corrida nao encontrada" });
   }
 
-  res.json({ ok: true, corrida: attachCoords(data) });
+  res.json({ ok: true, corrida: data });
 });
 
 app.listen(PORT, () => {
