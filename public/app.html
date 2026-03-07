@@ -912,6 +912,31 @@
       updateDriverInstruction();
     }
 
+    function shortAddress(label) {
+      if (!label) return "";
+      const clean = String(label).trim();
+      if (!clean) return "";
+      const parts = clean.split(",");
+      let head = (parts[0] || "").trim();
+      let street = head;
+      let number = "";
+      const match = head.match(/^(.*?)(\d+[A-Za-z]?)$/);
+      if (match) {
+        street = match[1].trim();
+        number = match[2].trim();
+      } else if (parts.length > 1) {
+        const second = (parts[1] || "").trim();
+        const numMatch = second.match(/^(\d+[A-Za-z]?)$/);
+        if (numMatch) {
+          number = numMatch[1];
+        }
+      }
+      if (number) {
+        return `${street}, ${number}`;
+      }
+      return street;
+    }
+
     function updateDriverInstruction() {
       if (!driverMapOverlay) return;
 
@@ -943,13 +968,13 @@
       }
 
       if (driverRouteLabel) {
+        const origemCurta = shortAddress(currentRide.origem);
+        const destinoCurto = shortAddress(currentRide.destino);
         let rotaTexto = "";
         if (currentRide.status === "em_andamento") {
-          rotaTexto = "Rota atual: Origem → Destino";
-        } else if (currentRide.status === "motorista_no_local") {
-          rotaTexto = "Rota atual: Origem → Destino";
+          rotaTexto = destinoCurto ? `Destino: ${destinoCurto}` : "Destino";
         } else {
-          rotaTexto = "Rota atual: Motorista → Origem";
+          rotaTexto = origemCurta ? `Origem: ${origemCurta}` : "Origem";
         }
         driverRouteLabel.textContent = rotaTexto;
         driverRouteLabel.classList.remove("hidden");
