@@ -79,15 +79,14 @@
     </div>
   </div>
 
-  <script src="/config.js"></script>
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.js"></script>
   <script>
     const API_BASE = window.location.origin && window.location.origin.startsWith("http")
       ? window.location.origin
       : "http://localhost:10000";
 
-    const MAPBOX_TOKEN = window.MAPBOX_TOKEN || "";
-    const MAPBOX_STYLE = window.MAPBOX_STYLE || "mapbox://styles/mapbox/streets-v12";
+    let MAPBOX_TOKEN = "";
+    let MAPBOX_STYLE = "mapbox://styles/mapbox/streets-v12";
 
     const sessionRaw = localStorage.getItem("corridaSession");
     const session = sessionRaw ? JSON.parse(sessionRaw) : null;
@@ -160,6 +159,31 @@
       element.textContent = "";
     }
 
+    async function loadConfig() {
+      try {
+        const resposta = await fetch(API_BASE + "/config");
+        const dados = await resposta.json();
+        if (dados && dados.mapboxToken) {
+          MAPBOX_TOKEN = dados.mapboxToken;
+        }
+        if (dados && dados.mapboxStyle) {
+          MAPBOX_STYLE = dados.mapboxStyle;
+        }
+      } catch (erro) {
+        showMessage(passengerMessage, "error", "Nao foi possivel carregar configuracoes do servidor.");
+        showMessage(driverMessage, "error", "Nao foi possivel carregar configuracoes do servidor.");
+        return false;
+      }
+
+      if (!MAPBOX_TOKEN) {
+        showMessage(passengerMessage, "error", "Chave Mapbox nao configurada no servidor (MAPBOX_TOKEN).");
+        showMessage(driverMessage, "error", "Chave Mapbox nao configurada no servidor (MAPBOX_TOKEN).");
+        return false;
+      }
+
+      return true;
+    }
+
     function updateUserSummary() {
       if (usuario.tipo === "motorista") {
         userSummary.textContent = `Motorista: ${usuario.nome}`;
@@ -182,9 +206,9 @@
     });
 
     function ensureMapbox() {
-      if (!MAPBOX_TOKEN || MAPBOX_TOKEN.includes("SUA_CHAVE")) {
-        showMessage(passengerMessage, "error", "Configure sua chave Mapbox em public/config.js.");
-        showMessage(driverMessage, "error", "Configure sua chave Mapbox em public/config.js.");
+      if (!MAPBOX_TOKEN) {
+        showMessage(passengerMessage, "error", "Chave Mapbox nao configurada no servidor (MAPBOX_TOKEN).");
+        showMessage(driverMessage, "error", "Chave Mapbox nao configurada no servidor (MAPBOX_TOKEN).");
         return false;
       }
       if (!mapboxgl || !mapboxgl.supported()) {
@@ -249,6 +273,9 @@
     }
 
     async function forwardGeocode(query, proximity) {
+      if (!MAPBOX_TOKEN) {
+        return [];
+      }
       const url = new URL("https://api.mapbox.com/search/geocode/v6/forward");
       url.searchParams.set("q", query);
       url.searchParams.set("access_token", MAPBOX_TOKEN);
@@ -272,6 +299,9 @@
     }
 
     async function reverseGeocode(coords) {
+      if (!MAPBOX_TOKEN) {
+        return null;
+      }
       const url = new URL("https://api.mapbox.com/search/geocode/v6/reverse");
       url.searchParams.set("longitude", coords.lng);
       url.searchParams.set("latitude", coords.lat);
@@ -285,6 +315,9 @@
     }
 
     async function fetchRoute(origin, destination) {
+      if (!MAPBOX_TOKEN) {
+        return null;
+      }
       const url = new URL(
         `https://api.mapbox.com/directions/v5/mapbox/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}`
       );
@@ -818,7 +851,11 @@
       }
     }
 
-    initApp();
+    loadConfig().then((ok) => {
+      if (ok) {
+        initApp();
+      }
+    });
   </script>
 </body>
 </html>

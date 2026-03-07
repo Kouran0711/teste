@@ -96,6 +96,14 @@ app.get("/status", (req, res) => {
   });
 });
 
+app.get("/config", (req, res) => {
+  res.json({
+    ok: true,
+    mapboxToken: process.env.MAPBOX_TOKEN || "",
+    mapboxStyle: process.env.MAPBOX_STYLE || "mapbox://styles/mapbox/streets-v12"
+  });
+});
+
 app.get("/usuarios", async (req, res) => {
   const { data, error } = await supabase
     .from("usuarios")
