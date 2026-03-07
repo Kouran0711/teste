@@ -40,6 +40,7 @@
         <div id="passengerMessage" class="message"></div>
         <div id="passengerWaiting" class="waiting-box hidden">
           <div class="status-pill online" id="passengerWaitingText">Aguardando motorista...</div>
+          <div class="progress-bar" id="passengerProgress" aria-hidden="true"><span></span></div>
           <button class="button secondary" type="button" id="cancelRideBtn">Cancelar corrida</button>
         </div>
         <div id="passengerRideInfo" class="ride-item hidden"></div>
@@ -172,6 +173,7 @@
     const cancelRideBtn = document.getElementById("cancelRideBtn");
     const passengerRideInfo = document.getElementById("passengerRideInfo");
     const passengerForm = document.getElementById("passengerForm");
+    const passengerProgress = document.getElementById("passengerProgress");
 
     const origemInput = document.getElementById("origemInput");
     const destinoInput = document.getElementById("destinoInput");
@@ -355,6 +357,9 @@
       passengerWaitingText.textContent = base ? `${texto} (${base})` : texto;
       passengerWaitingText.classList.toggle("online", status !== "em_andamento");
       passengerWaitingText.classList.toggle("busy", status === "em_andamento");
+      if (passengerProgress) {
+        passengerProgress.classList.toggle("hidden", status !== "aguardando_motorista");
+      }
       const podeCancelar = status !== "finalizada" && status !== "cancelada";
       if (cancelRideBtn) {
         cancelRideBtn.classList.remove("hidden");
@@ -404,6 +409,7 @@
       passengerWaiting = true;
       passengerWaitingBox.classList.remove("hidden");
       passengerWaitingText.textContent = "Enviando solicitacao...";
+      passengerProgress?.classList.remove("hidden");
       if (cancelRideBtn) {
         cancelRideBtn.classList.remove("hidden");
         cancelRideBtn.disabled = true;

@@ -232,14 +232,18 @@ a:hover {
 
 .message {
   display: none;
-  padding: 10px 12px;
-  border-radius: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
   font-size: 13px;
   margin-bottom: 12px;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+  position: relative;
+  overflow: hidden;
 }
 
 .message.show {
   display: block;
+  animation: toastIn 0.35s ease;
 }
 
 .message.success {
@@ -250,6 +254,33 @@ a:hover {
 .message.error {
   background: var(--error-bg);
   color: var(--error-text);
+}
+
+.message::after {
+  content: "";
+  position: absolute;
+  right: 18px;
+  bottom: -8px;
+  width: 14px;
+  height: 14px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+
+.message.success::after,
+.message.error::after {
+  background: inherit;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .waiting-box {
@@ -561,6 +592,50 @@ body.driver-mode #logoutBtn {
   background: #f3f4f6;
   color: #111827;
   font-weight: 600;
+}
+
+.status-pill.online {
+  animation: pulseSoft 1.6s ease-in-out infinite;
+}
+
+@keyframes pulseSoft {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(22, 101, 52, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(22, 101, 52, 0);
+  }
+}
+
+.progress-bar {
+  height: 6px;
+  width: 100%;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar span {
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, #0f172a 0%, #2563eb 50%, #0f172a 100%);
+  border-radius: 999px;
+  animation: progressMove 1.4s ease-in-out infinite;
+}
+
+@keyframes progressMove {
+  0% {
+    transform: translateX(-60%);
+  }
+  50% {
+    transform: translateX(60%);
+  }
+  100% {
+    transform: translateX(140%);
+  }
 }
 
 .status-pill.online {
