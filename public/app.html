@@ -17,11 +17,20 @@
 <body>
   <div class="app-shell">
     <div class="topbar">
-      <div class="title">
-        <h1>Corrida Simples</h1>
-        <span id="userSummary">Carregando sessao...</span>
+      <div class="topbar-left">
+        <button class="icon-button hidden" id="menuToggle" aria-label="Abrir menu">|||</button>
+        <div class="title">
+          <h1>Corrida Simples</h1>
+          <span id="userSummary">Carregando sessao...</span>
+        </div>
       </div>
-      <button class="button secondary" id="logoutBtn">Sair</button>
+      <div class="topbar-right">
+        <div class="driver-controls hidden" id="driverControls">
+          <div class="status-pill" id="driverStatusTop">Offline</div>
+          <button class="button small" type="button" id="driverToggleTop">Ficar online</button>
+        </div>
+        <button class="button secondary" id="logoutBtn">Sair</button>
+      </div>
     </div>
 
     <div class="app-content">
@@ -55,8 +64,11 @@
         <button class="button" type="button" id="solicitarCorrida">Solicitar corrida</button>
       </div>
 
-      <div class="card hidden" id="driverPanel">
-        <h2>Painel do motorista</h2>
+      <div class="card hidden drawer" id="driverPanel">
+        <div class="drawer-header">
+          <h2>Menu do motorista</h2>
+          <button class="icon-button" id="menuClose" aria-label="Fechar menu">X</button>
+        </div>
         <p>Fique online para receber corridas mais proximas.</p>
         <div id="driverMessage" class="message"></div>
         <div class="status-pill" id="driverStatus">Offline</div>
@@ -72,9 +84,31 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card map-card">
         <div id="passengerMap" class="map-box"></div>
         <div id="driverMap" class="map-box hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="menu-overlay" id="menuOverlay"></div>
+
+  <div class="modal-backdrop hidden" id="rideModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <h3>Nova corrida</h3>
+          <p id="rideModalMeta" class="muted">Analise os detalhes antes de aceitar.</p>
+        </div>
+        <button class="icon-button" id="rideModalClose" aria-label="Fechar modal">X</button>
+      </div>
+      <div class="modal-body">
+        <div id="rideModalDetails" class="ride-item"></div>
+        <div id="rideModalMap" class="modal-map"></div>
+        <div class="modal-actions">
+          <button class="button" type="button" id="rideModalAccept">Aceitar corrida</button>
+          <button class="button secondary" type="button" id="rideModalDismiss">Ignorar</button>
+        </div>
       </div>
     </div>
   </div>
@@ -99,6 +133,12 @@
     const motorista = session.motorista || null;
 
     const userSummary = document.getElementById("userSummary");
+    const menuToggle = document.getElementById("menuToggle");
+    const menuClose = document.getElementById("menuClose");
+    const menuOverlay = document.getElementById("menuOverlay");
+    const driverControls = document.getElementById("driverControls");
+    const driverStatusTop = document.getElementById("driverStatusTop");
+    const driverToggleTop = document.getElementById("driverToggleTop");
     const passengerPanel = document.getElementById("passengerPanel");
     const driverPanel = document.getElementById("driverPanel");
     const passengerMapEl = document.getElementById("passengerMap");
@@ -122,6 +162,14 @@
     const driverLocation = document.getElementById("driverLocation");
     const pendingRides = document.getElementById("pendingRides");
     const currentRideBox = document.getElementById("currentRide");
+
+    const rideModal = document.getElementById("rideModal");
+    const rideModalMeta = document.getElementById("rideModalMeta");
+    const rideModalDetails = document.getElementById("rideModalDetails");
+    const rideModalMapEl = document.getElementById("rideModalMap");
+    const rideModalClose = document.getElementById("rideModalClose");
+    const rideModalDismiss = document.getElementById("rideModalDismiss");
+    const rideModalAccept = document.getElementById("rideModalAccept");
 
     let passengerMap = null;
     let passengerOriginMarker = null;
@@ -154,6 +202,13 @@
     let lastRouteUpdate = 0;
     let audioContext = null;
     let driverMapReady = false;
+    let rideModalMap = null;
+    let rideModalDriverMarker = null;
+    let rideModalPickupMarker = null;
+    let rideModalRouteId = "ride-modal-route";
+    let rideModalRide = null;
+    let rideModalOpen = false;
+    let rideModalMapReady = false;
 
     function showMessage(element, type, text) {
       element.className = `message ${type} show`;
@@ -204,7 +259,18 @@
       passengerMapEl.classList.toggle("hidden", !isPassenger);
       driverPanel.classList.toggle("hidden", isPassenger);
       driverMapEl.classList.toggle("hidden", isPassenger);
+      if (isPassenger) {
+        setMenuOpen(false);
+      }
     }
+
+    function setMenuOpen(open) {
+      document.body.classList.toggle("menu-open", open);
+    }
+
+    menuToggle?.addEventListener("click", () => setMenuOpen(true));
+    menuClose?.addEventListener("click", () => setMenuOpen(false));
+    menuOverlay?.addEventListener("click", () => setMenuOpen(false));
 
     logoutBtn.addEventListener("click", () => {
       localStorage.removeItem("corridaSession");
@@ -387,6 +453,13 @@
       startPassengerWatch();
     }
 
+    function geolocationErrorMessage() {
+      if (!window.isSecureContext && window.location.hostname !== "localhost") {
+        return "A localizacao exige HTTPS ou localhost. Verifique o acesso do navegador.";
+      }
+      return "Nao foi possivel obter localizacao. Verifique a permissao do navegador e se o GPS esta ativo.";
+    }
+
     function updatePassengerMarkers() {
       if (!passengerMap) return;
       if (passengerOriginCoords) {
@@ -462,7 +535,7 @@
           }
         },
         () => {
-          showMessage(passengerMessage, "error", "Nao foi possivel obter sua localizacao.");
+          showMessage(passengerMessage, "error", geolocationErrorMessage());
         },
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 }
       );
@@ -501,7 +574,7 @@
         return;
       }
       const now = Date.now();
-      if (!force && now - lastRouteUpdate < 10000) {
+      if (!force && now - lastRouteUpdate < 5000) {
         return;
       }
       lastRouteUpdate = now;
@@ -523,18 +596,29 @@
     }
 
     function updateDriverStatus() {
+      const statusEls = [driverStatus, driverStatusTop].filter(Boolean);
+      const toggleEls = [driverToggle, driverToggleTop].filter(Boolean);
+
       if (driverInRide) {
-        driverStatus.textContent = "Em corrida";
-        driverStatus.classList.add("busy");
-        driverStatus.classList.remove("online");
-        driverToggle.textContent = "Ficar offline";
+        statusEls.forEach((el) => {
+          el.textContent = "Em corrida";
+          el.classList.add("busy");
+          el.classList.remove("online");
+        });
+        toggleEls.forEach((el) => {
+          el.textContent = "Ficar offline";
+        });
         return;
       }
 
-      driverStatus.textContent = driverOnline ? "Online" : "Offline";
-      driverStatus.classList.toggle("online", driverOnline);
-      driverStatus.classList.remove("busy");
-      driverToggle.textContent = driverOnline ? "Ficar offline" : "Ficar online";
+      statusEls.forEach((el) => {
+        el.textContent = driverOnline ? "Online" : "Offline";
+        el.classList.toggle("online", driverOnline);
+        el.classList.remove("busy");
+      });
+      toggleEls.forEach((el) => {
+        el.textContent = driverOnline ? "Ficar offline" : "Ficar online";
+      });
     }
 
     function updateDriverLocationDisplay() {
@@ -545,17 +629,25 @@
       driverLocation.textContent = `Localizacao: ${driverPosition.lat.toFixed(5)}, ${driverPosition.lng.toFixed(5)}`;
     }
 
-    function playNotification() {
+    function playSiren() {
       if (!audioContext) return;
+      const now = audioContext.currentTime;
       const osc = audioContext.createOscillator();
       const gain = audioContext.createGain();
-      osc.type = "sine";
-      osc.frequency.value = 880;
-      gain.gain.value = 0.2;
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(520, now);
+      osc.frequency.exponentialRampToValueAtTime(980, now + 0.6);
+      osc.frequency.exponentialRampToValueAtTime(520, now + 1.2);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.8, now + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2);
       osc.connect(gain);
       gain.connect(audioContext.destination);
-      osc.start();
-      osc.stop(audioContext.currentTime + 0.4);
+      osc.start(now);
+      osc.stop(now + 1.25);
+      if (navigator.vibrate) {
+        navigator.vibrate([200, 100, 200, 100, 200]);
+      }
     }
 
     function ensureAudioContext() {
@@ -635,6 +727,89 @@
         .join("");
     }
 
+    function openRideModal(corrida) {
+      if (!corrida || !rideModal) return;
+      rideModalRide = corrida;
+      rideModalOpen = true;
+      document.body.classList.add("modal-open");
+      rideModal.classList.remove("hidden");
+
+      const dist = corrida.distanciaParaMotoristaKm !== null
+        ? `${corrida.distanciaParaMotoristaKm.toFixed(2)} km`
+        : "distancia nao informada";
+
+      rideModalMeta.textContent = `Corrida #${corrida.id}`;
+      rideModalDetails.innerHTML = `
+        <strong>Origem</strong>: ${corrida.origem}<br>
+        <strong>Destino</strong>: ${corrida.destino}<br>
+        <strong>Valor</strong>: R$ ${Number(corrida.valor || 0).toFixed(2)}<br>
+        <strong>Distancia</strong>: ${dist}
+      `;
+
+      initRideModalMap();
+      if (rideModalMap) {
+        rideModalMap.resize();
+      }
+      updateRideModalRoute(true);
+      ensureAudioContext();
+      playSiren();
+    }
+
+    function closeRideModal() {
+      rideModalOpen = false;
+      rideModalRide = null;
+      document.body.classList.remove("modal-open");
+      if (rideModal) {
+        rideModal.classList.add("hidden");
+      }
+    }
+
+    function initRideModalMap() {
+      if (!ensureMapbox() || !rideModalMapEl) return;
+      if (rideModalMap) return;
+
+      rideModalMap = new mapboxgl.Map({
+        container: "rideModalMap",
+        style: MAPBOX_STYLE,
+        center: [-46.6333, -23.5505],
+        zoom: 12,
+        interactive: false
+      });
+
+      rideModalMap.on("load", () => {
+        rideModalMapReady = true;
+        updateRideModalRoute(true);
+      });
+
+      rideModalDriverMarker = new mapboxgl.Marker({ color: "#0e7c86" }).setLngLat([-46.6333, -23.5505]);
+      rideModalPickupMarker = new mapboxgl.Marker({ color: "#f97316" }).setLngLat([-46.6333, -23.5505]);
+    }
+
+    async function updateRideModalRoute(force) {
+      if (!rideModalOpen || !rideModalMap || !rideModalRide || !rideModalMapReady) return;
+      if (!driverPosition) {
+        rideModalMeta.textContent = "Aguardando localizacao para calcular a rota...";
+        return;
+      }
+      if (!rideModalRide.origemLat || !rideModalRide.origemLng) {
+        rideModalMeta.textContent = "Sem coordenadas da origem.";
+        return;
+      }
+
+      const origin = driverPosition;
+      const destination = { lat: rideModalRide.origemLat, lng: rideModalRide.origemLng };
+      const route = await fetchRoute(origin, destination);
+      if (!route) {
+        rideModalMeta.textContent = "Nao foi possivel calcular a rota.";
+        return;
+      }
+
+      setRoute(rideModalMap, rideModalRouteId, { type: "Feature", geometry: route.geometry }, "#f97316");
+      rideModalDriverMarker.setLngLat([origin.lng, origin.lat]).addTo(rideModalMap);
+      rideModalPickupMarker.setLngLat([destination.lng, destination.lat]).addTo(rideModalMap);
+      fitBounds(rideModalMap, origin, destination);
+    }
+
     async function carregarCorridasPendentes() {
       if (!motorista || !driverOnline || driverInRide) return;
 
@@ -645,14 +820,21 @@
 
         const ids = new Set(lista.map((item) => item.id));
         let novo = false;
+        let primeiraNova = null;
         ids.forEach((id) => {
           if (!pendingIds.has(id)) {
             novo = true;
+            if (!primeiraNova) {
+              primeiraNova = lista.find((corrida) => corrida.id === id) || null;
+            }
           }
         });
         pendingIds = ids;
         if (novo) {
-          playNotification();
+          playSiren();
+          if (primeiraNova && !rideModalOpen) {
+            openRideModal(primeiraNova);
+          }
         }
 
         renderPendingRides(lista);
@@ -694,7 +876,7 @@
           updatePassengerRoute();
         },
         () => {
-          showMessage(passengerMessage, "error", "Nao foi possivel obter sua localizacao.");
+          showMessage(passengerMessage, "error", geolocationErrorMessage());
         },
         { enableHighAccuracy: true, timeout: 8000 }
       );
@@ -764,7 +946,7 @@
       }
     });
 
-    driverToggle.addEventListener("click", async () => {
+    async function toggleDriverOnline() {
       clearMessage(driverMessage);
 
       if (!navigator.geolocation) {
@@ -784,6 +966,7 @@
         clearInterval(pendingPoll);
         pendingPoll = null;
         pendingIds = new Set();
+        closeRideModal();
         await atualizarMotoristaStatus();
         return;
       }
@@ -797,10 +980,11 @@
           updateDriverMarkers();
           await atualizarMotoristaStatus();
           updateDriverRoute(false);
+          updateRideModalRoute(false);
           await carregarCorridasPendentes();
         },
         () => {
-          showMessage(driverMessage, "error", "Nao foi possivel obter localizacao.");
+          showMessage(driverMessage, "error", geolocationErrorMessage());
           driverOnline = false;
           updateDriverStatus();
         },
@@ -808,6 +992,19 @@
       );
 
       pendingPoll = setInterval(carregarCorridasPendentes, 6000);
+    }
+
+    [driverToggle, driverToggleTop].filter(Boolean).forEach((btn) => {
+      btn.addEventListener("click", toggleDriverOnline);
+    });
+
+    rideModalClose?.addEventListener("click", closeRideModal);
+    rideModalDismiss?.addEventListener("click", closeRideModal);
+    rideModalAccept?.addEventListener("click", () => {
+      if (rideModalRide && window.aceitarCorrida) {
+        window.aceitarCorrida(rideModalRide.id);
+      }
+      closeRideModal();
     });
 
     window.aceitarCorrida = async function (id) {
@@ -830,6 +1027,7 @@
         updateDriverStatus();
         renderCurrentRide();
         renderPendingRides([]);
+        closeRideModal();
         await atualizarMotoristaStatus();
 
         if (currentRide.origemLat && currentRide.origemLng) {
@@ -902,15 +1100,23 @@
       setupPanels();
 
       if (usuario.tipo === "passageiro") {
+        document.body.classList.remove("driver-mode");
+        menuToggle?.classList.add("hidden");
+        driverControls?.classList.add("hidden");
         initPassengerMap();
       } else {
+        document.body.classList.add("driver-mode");
+        menuToggle?.classList.remove("hidden");
+        driverControls?.classList.remove("hidden");
         initDriverMap();
         updateDriverStatus();
         renderCurrentRide();
         renderPendingRides([]);
         if (!motorista) {
           showMessage(driverMessage, "error", "Perfil de motorista nao encontrado.");
-          driverToggle.disabled = true;
+          [driverToggle, driverToggleTop].filter(Boolean).forEach((btn) => {
+            btn.disabled = true;
+          });
         }
       }
     }

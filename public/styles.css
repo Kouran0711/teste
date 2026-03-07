@@ -244,6 +244,18 @@ a:hover {
   padding: 24px 20px 0;
 }
 
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .topbar .title {
   display: flex;
   flex-direction: column;
@@ -273,11 +285,162 @@ a:hover {
   padding: 24px 20px 40px;
 }
 
+.map-card {
+  padding: 12px;
+}
+
 .map-box {
   height: 430px;
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid var(--border);
+}
+
+.driver-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.button.small {
+  width: auto;
+  padding: 9px 14px;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 340px;
+  max-width: 86vw;
+  height: 100vh;
+  transform: translateX(-110%);
+  transition: transform 0.25s ease;
+  z-index: 10;
+  overflow-y: auto;
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.menu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 9;
+}
+
+body.menu-open .menu-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+body.menu-open .drawer {
+  transform: translateX(0);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  padding: 20px;
+}
+
+.modal {
+  width: min(720px, 95vw);
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.modal-body {
+  display: grid;
+  gap: 12px;
+}
+
+.modal-map {
+  height: 240px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.modal-actions {
+  display: grid;
+  gap: 10px;
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+body.driver-mode .app-content {
+  grid-template-columns: 1fr;
+  padding: 0;
+}
+
+body.driver-mode .map-card {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+body.driver-mode .map-box {
+  height: 100vh;
+  border-radius: 0;
+  border: none;
+}
+
+body.driver-mode .topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+}
+
+body.driver-mode #driverPanel .status-pill,
+body.driver-mode #driverPanel #driverToggle {
+  display: none;
 }
 
 .status-pill {
