@@ -801,6 +801,9 @@
         return;
       }
       driverMarker.setLngLat([driverPosition.lng, driverPosition.lat]).addTo(driverMap);
+      if (currentRide && currentRide.status === "em_andamento") {
+        return;
+      }
       if (driverRouteTarget) {
         fitBounds(driverMap, driverPosition, driverRouteTarget);
       } else {
@@ -816,19 +819,27 @@
       let destination = null;
       let color = "#2563eb";
 
-      if (driverPosition && driverRouteTarget) {
+      const hasRideCoords =
+        currentRide &&
+        Number.isFinite(currentRide.origemLat) &&
+        Number.isFinite(currentRide.origemLng) &&
+        Number.isFinite(currentRide.destinoLat) &&
+        Number.isFinite(currentRide.destinoLng);
+
+      if (currentRide && currentRide.status === "em_andamento" && hasRideCoords) {
+        origin = { lat: currentRide.origemLat, lng: currentRide.origemLng };
+        destination = { lat: currentRide.destinoLat, lng: currentRide.destinoLng };
+        color = "#f97316";
+        pickupMarker.setLngLat([origin.lng, origin.lat]).addTo(driverMap);
+        dropoffMarker.setLngLat([destination.lng, destination.lat]).addTo(driverMap);
+      } else if (driverPosition && driverRouteTarget) {
         origin = driverPosition;
         destination = driverRouteTarget;
-      } else if (driverPosition && currentRide && currentRide.origemLat && currentRide.origemLng && currentRide.destinoLat && currentRide.destinoLng) {
+      } else if (driverPosition && hasRideCoords) {
         origin = driverPosition;
-        if (currentRide.status === "em_andamento") {
-          destination = { lat: currentRide.destinoLat, lng: currentRide.destinoLng };
-          dropoffMarker.setLngLat([destination.lng, destination.lat]).addTo(driverMap);
-        } else {
-          destination = { lat: currentRide.origemLat, lng: currentRide.origemLng };
-          pickupMarker.setLngLat([destination.lng, destination.lat]).addTo(driverMap);
-        }
-      } else if (currentRide && currentRide.origemLat && currentRide.origemLng && currentRide.destinoLat && currentRide.destinoLng) {
+        destination = { lat: currentRide.origemLat, lng: currentRide.origemLng };
+        pickupMarker.setLngLat([destination.lng, destination.lat]).addTo(driverMap);
+      } else if (hasRideCoords) {
         origin = { lat: currentRide.origemLat, lng: currentRide.origemLng };
         destination = { lat: currentRide.destinoLat, lng: currentRide.destinoLng };
         color = "#f97316";
