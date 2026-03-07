@@ -408,7 +408,7 @@ body.driver-mode .waiting-box {
   height: 100vh;
   transform: translateX(-110%);
   transition: transform 0.25s ease;
-  z-index: 10;
+  z-index: 30;
   overflow-y: auto;
 }
 
@@ -427,7 +427,7 @@ body.driver-mode .waiting-box {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
-  z-index: 9;
+  z-index: 25;
 }
 
 body.menu-open .menu-overlay {

@@ -409,7 +409,7 @@ app.post("/corridas", async (req, res) => {
     }
 
     const distanciaFinal = Number(Number(distanciaCalculada).toFixed(2));
-    const valorFinal = Number((distanciaFinal * 1).toFixed(2));
+    const valorFinal = Number((distanciaFinal * 1.9).toFixed(2));
 
     const metodoFinal = ["dinheiro", "cartao", "pix"].includes(pagamentoMetodo)
       ? pagamentoMetodo

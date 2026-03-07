@@ -423,16 +423,22 @@
         passengerDriverInfo = dados.corrida.motoristas || null;
         renderPassengerRideInfo();
         if (status === "finalizada") {
+          ensureAudioContext();
+          playUpdateTone();
           clearPassengerWaiting();
           showMessage(passengerMessage, "success", "Corrida finalizada.");
           return;
         }
         if (status === "cancelada") {
+          ensureAudioContext();
+          playUpdateTone();
           clearPassengerWaiting();
           showMessage(passengerMessage, "error", "Corrida cancelada.");
           return;
         }
         if (status && status !== passengerRideStatus) {
+          ensureAudioContext();
+          playUpdateTone();
           setPassengerStatus(status);
           if (status === "motorista_a_caminho") {
             showMessage(passengerMessage, "success", "Motorista aceitou a corrida e esta a caminho.");
@@ -712,7 +718,7 @@
       }
 
       passengerDistanceKm = route.distanceKm;
-      const valor = passengerDistanceKm * 1;
+      const valor = passengerDistanceKm * 1.9;
       valorEstimado.textContent = `Valor estimado: R$ ${valor.toFixed(2)} (${passengerDistanceKm.toFixed(2)} km)`;
 
       if (passengerMapReady) {
@@ -953,6 +959,26 @@
       }
     }
 
+    function playUpdateTone() {
+      if (!audioContext) return;
+      const now = audioContext.currentTime;
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(720, now);
+      osc.frequency.exponentialRampToValueAtTime(540, now + 0.2);
+      gain.gain.setValueAtTime(0.0, now);
+      gain.gain.linearRampToValueAtTime(0.6, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      osc.start(now);
+      osc.stop(now + 0.25);
+      if (navigator.vibrate) {
+        navigator.vibrate([80]);
+      }
+    }
+
     function ensureAudioContext() {
       if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -1070,13 +1096,19 @@
             renderCurrentRide();
             updateDriverInstruction();
             updateDriverRoute(true);
+            ensureAudioContext();
+            playUpdateTone();
           }
           if (dados.corrida.status === "cancelada") {
+            ensureAudioContext();
+            playUpdateTone();
             resetDriverRide("Corrida cancelada pelo passageiro.", "error");
             await atualizarMotoristaStatus();
             await carregarCorridasPendentes();
           }
           if (dados.corrida.status === "finalizada") {
+            ensureAudioContext();
+            playUpdateTone();
             resetDriverRide("Corrida finalizada.", "success");
             await atualizarMotoristaStatus();
             await carregarCorridasPendentes();
