@@ -252,6 +252,10 @@ a:hover {
   margin-bottom: 12px;
 }
 
+#passengerCancelFloating {
+  margin-top: 8px;
+}
+
 body.driver-mode .waiting-box {
   display: none;
 }
@@ -599,7 +603,8 @@ body.driver-mode #logoutBtn {
   }
 
   .map-overlay {
-    top: 70px;
-    right: 12px;
+    top: 68px;
+    right: 10px;
+    max-width: 70vw;
   }
 }

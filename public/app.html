@@ -43,6 +43,9 @@
           <button class="button secondary" type="button" id="cancelRideBtn">Cancelar solicitacao</button>
         </div>
         <div id="passengerRideInfo" class="ride-item hidden"></div>
+        <button class="button secondary hidden" type="button" id="passengerCancelFloating">
+          Cancelar corrida
+        </button>
 
         <div id="passengerForm">
           <div class="form-field autocomplete">
@@ -99,7 +102,9 @@
         <div id="driverMap" class="map-box hidden"></div>
         <div class="map-overlay hidden" id="driverMapOverlay">
           <div class="map-instruction" id="driverInstruction">Aguardando corridas...</div>
-          <button class="button small" type="button" id="driverRecalcFloating">Atualizar rota</button>
+          <button class="button small" type="button" id="driverRecalcFloating">
+            Atualizar rota
+          </button>
         </div>
       </div>
     </div>
@@ -166,6 +171,7 @@
     const cancelRideBtn = document.getElementById("cancelRideBtn");
     const passengerRideInfo = document.getElementById("passengerRideInfo");
     const passengerForm = document.getElementById("passengerForm");
+    const passengerCancelFloating = document.getElementById("passengerCancelFloating");
 
     const origemInput = document.getElementById("origemInput");
     const destinoInput = document.getElementById("destinoInput");
@@ -224,6 +230,8 @@
     let driverInRide = false;
     let pendingPoll = null;
     let pendingIds = new Set();
+    let ignoredRideIds = new Set();
+    let lastPendingList = [];
     let currentRide = null;
     let driverRouteTarget = null;
     let audioContext = null;
@@ -344,6 +352,10 @@
         cancelRideBtn.classList.remove("hidden");
         cancelRideBtn.disabled = status !== "aguardando_motorista";
       }
+      if (passengerCancelFloating) {
+        passengerCancelFloating.classList.toggle("hidden", !passengerWaiting);
+        passengerCancelFloating.disabled = status !== "aguardando_motorista";
+      }
       renderPassengerRideInfo();
     }
 
@@ -381,6 +393,7 @@
       setPassengerFormEnabled(true);
       stopPassengerPoll();
       passengerRideStatus = null;
+      passengerCancelFloating?.classList.add("hidden");
       renderPassengerRideInfo();
     }
 
@@ -391,6 +404,10 @@
       if (cancelRideBtn) {
         cancelRideBtn.classList.remove("hidden");
         cancelRideBtn.disabled = true;
+      }
+      if (passengerCancelFloating) {
+        passengerCancelFloating.classList.remove("hidden");
+        passengerCancelFloating.disabled = true;
       }
       setPassengerFormEnabled(false);
     }
@@ -891,29 +908,35 @@
       if (!audioContext) return;
       const now = audioContext.currentTime;
       const osc = audioContext.createOscillator();
+      const osc2 = audioContext.createOscillator();
       const gain = audioContext.createGain();
       osc.type = "square";
+      osc2.type = "sawtooth";
 
-      const pulses = 10;
-      const pulseDuration = 0.28;
-      const gap = 0.08;
+      const pulses = 14;
+      const pulseDuration = 0.26;
+      const gap = 0.06;
       let t = now;
       for (let i = 0; i < pulses; i += 1) {
-        const high = i % 2 === 0 ? 980 : 520;
+        const high = i % 2 === 0 ? 1200 : 640;
         osc.frequency.setValueAtTime(high, t);
+        osc2.frequency.setValueAtTime(high * 0.6, t);
         gain.gain.setValueAtTime(0.0, t);
-        gain.gain.linearRampToValueAtTime(0.9, t + 0.04);
-        gain.gain.linearRampToValueAtTime(0.2, t + pulseDuration);
+        gain.gain.linearRampToValueAtTime(1.0, t + 0.05);
+        gain.gain.linearRampToValueAtTime(0.25, t + pulseDuration);
         t += pulseDuration + gap;
       }
 
       gain.gain.linearRampToValueAtTime(0.0, t);
       osc.connect(gain);
+      osc2.connect(gain);
       gain.connect(audioContext.destination);
       osc.start(now);
+      osc2.start(now);
       osc.stop(t + 0.1);
+      osc2.stop(t + 0.1);
       if (navigator.vibrate) {
-        navigator.vibrate([200, 80, 200, 80, 200, 80, 200]);
+        navigator.vibrate([200, 80, 200, 80, 200, 80, 200, 80, 200]);
       }
     }
 
@@ -976,12 +999,13 @@
         pendingRides.innerHTML = "<div class=\"ride-item\">Finalize a corrida atual para receber novas.</div>";
         return;
       }
-      if (!lista || lista.length === 0) {
+      const filtradas = (lista || []).filter((corrida) => !ignoredRideIds.has(corrida.id));
+      if (!filtradas || filtradas.length === 0) {
         pendingRides.innerHTML = "<div class=\"ride-item\">Nenhuma corrida pendente.</div>";
         return;
       }
 
-      pendingRides.innerHTML = lista
+      pendingRides.innerHTML = filtradas
         .map((corrida) => {
           const dist = corrida.distanciaParaMotoristaKm !== null
             ? `${corrida.distanciaParaMotoristaKm.toFixed(2)} km`
@@ -994,6 +1018,7 @@
               Valor: R$ ${Number(corrida.valor || 0).toFixed(2)}<br>
               Distancia: ${dist}<br>
               <button class="button" type="button" onclick="aceitarCorrida(${corrida.id})">Aceitar</button>
+              <button class="button secondary" type="button" onclick="ignorarCorrida(${corrida.id})">Ignorar</button>
             </div>
           `;
         })
@@ -1039,12 +1064,13 @@
         const resposta = await fetch(API_BASE + `/corridas/pendentes?motoristaId=${motorista.id}`);
         const dados = await resposta.json();
         const lista = dados.corridas || [];
+        lastPendingList = lista;
 
         const ids = new Set(lista.map((item) => item.id));
         let novo = false;
         let primeiraNova = null;
         ids.forEach((id) => {
-          if (!pendingIds.has(id)) {
+          if (!pendingIds.has(id) && !ignoredRideIds.has(id)) {
             novo = true;
             if (!primeiraNova) {
               primeiraNova = lista.find((corrida) => corrida.id === id) || null;
@@ -1203,6 +1229,10 @@
       }
     });
 
+    passengerCancelFloating?.addEventListener("click", () => {
+      cancelRideBtn?.click();
+    });
+
     async function toggleDriverOnline() {
       clearMessage(driverMessage);
 
@@ -1214,6 +1244,7 @@
         clearInterval(pendingPoll);
         pendingPoll = null;
         pendingIds = new Set();
+        ignoredRideIds = new Set();
         closeRideModal();
         driverLocation.textContent = "Localizacao: offline";
         driverGpsWarning?.classList.add("hidden");
@@ -1226,6 +1257,7 @@
       updateDriverLocationDisplay();
       await atualizarMotoristaStatus();
       pendingIds = new Set();
+      ignoredRideIds = new Set();
       await carregarCorridasPendentes();
       pendingPoll = setInterval(carregarCorridasPendentes, 6000);
       updateDriverInstruction();
@@ -1312,6 +1344,7 @@
         }
 
         currentRide = dados.corrida;
+        ignoredRideIds.delete(id);
         driverInRide = true;
         updateDriverStatus();
         renderCurrentRide();
@@ -1327,6 +1360,15 @@
       } catch (erro) {
         showMessage(driverMessage, "error", "Nao foi possivel aceitar a corrida.");
       }
+    };
+
+    window.ignorarCorrida = function (id) {
+      if (!id) return;
+      ignoredRideIds.add(id);
+      if (rideModalRide && rideModalRide.id === id) {
+        closeRideModal();
+      }
+      renderPendingRides(lastPendingList);
     };
 
     window.iniciarCorrida = async function () {
