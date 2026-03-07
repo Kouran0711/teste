@@ -347,6 +347,26 @@ app.post("/corridas", async (req, res) => {
       return res.status(403).json({ ok: false, mensagem: "Passageiro inativo" });
     }
 
+    const { data: corridaAtiva, error: corridaAtivaError } = await supabase
+      .from("corridas")
+      .select("id, status")
+      .eq("passageiro_id", Number(passageiroId))
+      .in("status", ["aguardando_motorista", "motorista_a_caminho", "em_andamento"])
+      .limit(1)
+      .maybeSingle();
+
+    if (corridaAtivaError) {
+      return res.status(500).json({ ok: false, mensagem: corridaAtivaError.message });
+    }
+
+    if (corridaAtiva) {
+      return res.status(400).json({
+        ok: false,
+        mensagem: "Voce ja possui uma corrida ativa. Cancele antes de solicitar outra.",
+        corridaId: corridaAtiva.id
+      });
+    }
+
     const oLat = toNumber(origemLat);
     const oLng = toNumber(origemLng);
     const dLat = toNumber(destinoLat);
@@ -643,6 +663,61 @@ app.put("/corridas/:id/cancelar", async (req, res) => {
     coordsPorCorrida.delete(corridaId);
 
     res.json({ ok: true, mensagem: "Corrida cancelada com sucesso", corrida: attachCoords(atualizada) });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro ao cancelar corrida", erro: String(erro) });
+  }
+});
+
+app.put("/corridas/:id/cancelar-motorista", async (req, res) => {
+  const corridaId = Number(req.params.id);
+  const { motoristaId } = req.body;
+
+  if (!corridaId || !motoristaId) {
+    return res.status(400).json({ ok: false, mensagem: "corridaId e motoristaId sao obrigatorios" });
+  }
+
+  try {
+    const { data: corrida, error } = await supabase
+      .from("corridas")
+      .select("*")
+      .eq("id", corridaId)
+      .maybeSingle();
+
+    if (error) {
+      return res.status(500).json({ ok: false, mensagem: error.message });
+    }
+
+    if (!corrida) {
+      return res.status(404).json({ ok: false, mensagem: "Corrida nao encontrada" });
+    }
+
+    if (corrida.motorista_id !== Number(motoristaId)) {
+      return res.status(403).json({ ok: false, mensagem: "Motorista invalido" });
+    }
+
+    if (!["motorista_a_caminho", "em_andamento"].includes(corrida.status)) {
+      return res.status(400).json({ ok: false, mensagem: "A corrida nao pode ser cancelada agora" });
+    }
+
+    const { data: atualizada, error: updateError } = await supabase
+      .from("corridas")
+      .update({ status: "cancelada", cancelada_em: nowIso() })
+      .eq("id", corridaId)
+      .select("*")
+      .single();
+
+    if (updateError) {
+      return res.status(500).json({ ok: false, mensagem: updateError.message });
+    }
+
+    await supabase
+      .from("motoristas")
+      .update({ disponivel: true, updated_at: nowIso() })
+      .eq("id", motoristaId);
+
+    coordsPorCorrida.delete(corridaId);
+
+    res.json({ ok: true, mensagem: "Corrida cancelada pelo motorista", corrida: attachCoords(atualizada) });
   } catch (erro) {
     res.status(500).json({ ok: false, mensagem: "Erro ao cancelar corrida", erro: String(erro) });
   }

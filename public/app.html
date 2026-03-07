@@ -107,14 +107,15 @@
         </div>
         <button class="icon-button" id="rideModalClose" aria-label="Fechar modal">X</button>
       </div>
-      <div class="modal-body">
-        <div id="rideModalDetails" class="ride-item"></div>
-        <div id="rideModalMap" class="modal-map"></div>
-        <div class="modal-actions">
-          <button class="button" type="button" id="rideModalAccept">Aceitar corrida</button>
-          <button class="button secondary" type="button" id="rideModalDismiss">Ignorar</button>
+        <div class="modal-body">
+          <div id="rideModalDetails" class="ride-item"></div>
+          <div id="rideModalMap" class="modal-map"></div>
+          <div class="modal-actions">
+            <button class="button secondary" type="button" id="rideModalRecalc">Recalcular rota</button>
+            <button class="button" type="button" id="rideModalAccept">Aceitar corrida</button>
+            <button class="button secondary" type="button" id="rideModalDismiss">Ignorar</button>
+          </div>
         </div>
-      </div>
     </div>
   </div>
 
@@ -179,6 +180,7 @@
     const rideModalClose = document.getElementById("rideModalClose");
     const rideModalDismiss = document.getElementById("rideModalDismiss");
     const rideModalAccept = document.getElementById("rideModalAccept");
+    const rideModalRecalc = document.getElementById("rideModalRecalc");
 
     let passengerMap = null;
     let passengerOriginMarker = null;
@@ -196,6 +198,8 @@
     let passengerAutoLabel = "";
     let passengerWaiting = false;
     let passengerActiveRideId = null;
+    let passengerRideStatus = null;
+    let passengerStatusPoll = null;
 
     let driverMap = null;
     let driverMarker = null;
@@ -210,7 +214,6 @@
     let pendingIds = new Set();
     let currentRide = null;
     let driverRouteTarget = null;
-    let lastRouteUpdate = 0;
     let audioContext = null;
     let driverMapReady = false;
     let driverRetryTimeout = null;
@@ -290,17 +293,44 @@
       });
     }
 
+    function setPassengerStatus(status) {
+      passengerRideStatus = status;
+      const base = passengerActiveRideId ? `Corrida #${passengerActiveRideId}` : "";
+      let texto = "Aguardando motorista...";
+      if (status === "motorista_a_caminho") {
+        texto = "Motorista a caminho";
+      }
+      if (status === "em_andamento") {
+        texto = "Em corrida";
+      }
+      passengerWaitingText.textContent = base ? `${texto} (${base})` : texto;
+      passengerWaitingText.classList.toggle("online", status !== "em_andamento");
+      passengerWaitingText.classList.toggle("busy", status === "em_andamento");
+      cancelRideBtn?.classList.toggle("hidden", status !== "aguardando_motorista");
+    }
+
+    function startPassengerPoll() {
+      if (passengerStatusPoll) return;
+      passengerStatusPoll = setInterval(fetchPassengerRideStatus, 5000);
+    }
+
+    function stopPassengerPoll() {
+      if (passengerStatusPoll) {
+        clearInterval(passengerStatusPoll);
+        passengerStatusPoll = null;
+      }
+    }
+
     function setPassengerWaiting(ride) {
       passengerWaiting = true;
       passengerActiveRideId = ride?.id || null;
       if (passengerActiveRideId) {
         localStorage.setItem("passageiroCorridaAtiva", JSON.stringify({ id: passengerActiveRideId }));
       }
-      passengerWaitingText.textContent = passengerActiveRideId
-        ? `Aguardando motorista... Corrida #${passengerActiveRideId}`
-        : "Aguardando motorista...";
       passengerWaitingBox.classList.remove("hidden");
       setPassengerFormEnabled(false);
+      setPassengerStatus(ride?.status || "aguardando_motorista");
+      startPassengerPoll();
     }
 
     function clearPassengerWaiting() {
@@ -309,6 +339,43 @@
       localStorage.removeItem("passageiroCorridaAtiva");
       passengerWaitingBox.classList.add("hidden");
       setPassengerFormEnabled(true);
+      stopPassengerPoll();
+      passengerRideStatus = null;
+    }
+
+    function setPassengerSubmitting() {
+      passengerWaiting = true;
+      passengerWaitingBox.classList.remove("hidden");
+      passengerWaitingText.textContent = "Enviando solicitacao...";
+      cancelRideBtn?.classList.add("hidden");
+      setPassengerFormEnabled(false);
+    }
+
+    async function fetchPassengerRideStatus() {
+      if (!passengerActiveRideId) return;
+      try {
+        const resposta = await fetch(API_BASE + `/corridas/${passengerActiveRideId}`);
+        const dados = await resposta.json();
+        if (!dados.ok || !dados.corrida) {
+          return;
+        }
+        const status = dados.corrida.status;
+        if (status === "finalizada") {
+          clearPassengerWaiting();
+          showMessage(passengerMessage, "success", "Corrida finalizada.");
+          return;
+        }
+        if (status === "cancelada") {
+          clearPassengerWaiting();
+          showMessage(passengerMessage, "error", "Corrida cancelada.");
+          return;
+        }
+        if (status && status !== passengerRideStatus) {
+          setPassengerStatus(status);
+        }
+      } catch (erro) {
+        // silencioso para evitar spam
+      }
     }
 
     async function loadPassengerActiveRide() {
@@ -320,7 +387,7 @@
         if (!id) return;
         const resposta = await fetch(API_BASE + `/corridas/${id}`);
         const dados = await resposta.json();
-        if (dados.ok && dados.corrida && dados.corrida.status === "aguardando_motorista") {
+        if (dados.ok && dados.corrida && !["finalizada", "cancelada"].includes(dados.corrida.status)) {
           setPassengerWaiting(dados.corrida);
         } else {
           clearPassengerWaiting();
@@ -658,11 +725,6 @@
       if (!driverRouteTarget || !driverPosition || !driverMapReady) {
         return;
       }
-      const now = Date.now();
-      if (!force && now - lastRouteUpdate < 5000) {
-        return;
-      }
-      lastRouteUpdate = now;
       const route = await fetchRoute(driverPosition, driverRouteTarget);
       if (!route) return;
       setRoute(driverMap, driverRouteId, { type: "Feature", geometry: route.geometry }, "#2563eb");
@@ -982,10 +1044,12 @@
       }
 
       try {
+        setPassengerSubmitting();
         if (!passengerOriginCoords) {
           const results = await forwardGeocode(origemTexto, passengerOriginCoords);
           if (!results[0]) {
             showMessage(passengerMessage, "error", "Origem nao encontrada.");
+            clearPassengerWaiting();
             return;
           }
           passengerOriginCoords = results[0].coords;
@@ -996,6 +1060,7 @@
           const results = await forwardGeocode(destinoTexto, passengerOriginCoords);
           if (!results[0]) {
             showMessage(passengerMessage, "error", "Destino nao encontrado.");
+            clearPassengerWaiting();
             return;
           }
           passengerDestinationCoords = results[0].coords;
@@ -1026,12 +1091,18 @@
 
         if (!dados.ok) {
           showMessage(passengerMessage, "error", dados.mensagem || "Falha ao solicitar corrida.");
+          clearPassengerWaiting();
+          if (dados.corridaId) {
+            localStorage.setItem("passageiroCorridaAtiva", JSON.stringify({ id: dados.corridaId }));
+            loadPassengerActiveRide();
+          }
           return;
         }
 
         showMessage(passengerMessage, "success", "Corrida solicitada! Aguardando motorista.");
         setPassengerWaiting(dados.corrida);
       } catch (erro) {
+        clearPassengerWaiting();
         showMessage(passengerMessage, "error", "Nao foi possivel solicitar a corrida.");
       }
     });
@@ -1147,6 +1218,7 @@
 
     rideModalClose?.addEventListener("click", closeRideModal);
     rideModalDismiss?.addEventListener("click", closeRideModal);
+    rideModalRecalc?.addEventListener("click", () => updateRideModalRoute(true));
     rideModalAccept?.addEventListener("click", () => {
       if (rideModalRide && window.aceitarCorrida) {
         window.aceitarCorrida(rideModalRide.id);
@@ -1239,6 +1311,42 @@
         await carregarCorridasPendentes();
       } catch (erro) {
         showMessage(driverMessage, "error", "Nao foi possivel finalizar.");
+      }
+    };
+
+    window.cancelarCorridaMotorista = async function () {
+      if (!currentRide || !motorista) return;
+      clearMessage(driverMessage);
+
+      try {
+        const resposta = await fetch(API_BASE + `/corridas/${currentRide.id}/cancelar-motorista`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ motoristaId: motorista.id })
+        });
+        const dados = await resposta.json();
+
+        if (!dados.ok) {
+          showMessage(driverMessage, "error", dados.mensagem || "Falha ao cancelar.");
+          return;
+        }
+
+        currentRide = null;
+        driverInRide = false;
+        updateDriverStatus();
+        renderCurrentRide();
+        if (driverMap && driverMap.getSource(driverRouteId)) {
+          driverMap.removeLayer(driverRouteId);
+          driverMap.removeSource(driverRouteId);
+        }
+        pickupMarker?.remove();
+        dropoffMarker?.remove();
+        driverRouteTarget = null;
+        await atualizarMotoristaStatus();
+        await carregarCorridasPendentes();
+        showMessage(driverMessage, "success", "Corrida cancelada.");
+      } catch (erro) {
+        showMessage(driverMessage, "error", "Nao foi possivel cancelar.");
       }
     };
 
