@@ -329,7 +329,8 @@ body.driver-mode .waiting-box {
   z-index: 5;
   display: grid;
   gap: 8px;
-  max-width: min(320px, 90vw);
+  width: min(360px, 90vw);
+  max-width: min(360px, 90vw);
   justify-items: stretch;
 }
 
@@ -342,12 +343,13 @@ body.driver-mode .waiting-box {
   box-shadow: var(--shadow);
   line-height: 1.4;
   word-break: break-word;
+  width: 100%;
 }
 
 .driver-action-bar {
-  position: absolute;
+  position: fixed;
   left: 50%;
-  bottom: 16px;
+  bottom: 32px;
   transform: translateX(-50%);
   z-index: 12;
   width: min(520px, calc(100% - 24px));
@@ -498,7 +500,10 @@ body.driver-mode .map-box {
 
 body.driver-mode .map-overlay {
   top: 76px;
-  right: 16px;
+  left: 12px;
+  right: 12px;
+  width: min(520px, calc(100% - 24px));
+  max-width: none;
 }
 
 body.driver-mode .topbar {
@@ -632,6 +637,7 @@ body.driver-mode #logoutBtn {
     top: 68px;
     left: 10px;
     right: 10px;
+    width: calc(100% - 20px);
     max-width: none;
   }
 
@@ -646,7 +652,7 @@ body.driver-mode #logoutBtn {
     right: 10px;
     width: auto;
     transform: none;
-    bottom: max(12px, env(safe-area-inset-bottom));
+    bottom: max(120px, env(safe-area-inset-bottom));
   }
 
   .driver-action-buttons {
