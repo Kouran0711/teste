@@ -55,14 +55,14 @@ function attachCoords(corrida) {
 
 const CORRIDA_DETALHADA_SELECT = `
   *,
-  passageiro:usuarios!corridas_passageiro_id_fkey ( id, nome, telefone, email ),
+  passageiro:usuarios!corridas_passageiro_id_fkey ( id, nome, telefone, email, created_at ),
   motoristas (
     id,
     carro,
     placa,
     cor,
     usuario_id,
-    usuarios ( nome, telefone, email )
+    usuarios ( nome, telefone, email, created_at )
   )
 `;
 
@@ -607,6 +607,86 @@ app.put("/corridas/:id/aceitar", async (req, res) => {
   }
 });
 
+app.get("/motoristas/:id/resumo", async (req, res) => {
+  const motoristaId = Number(req.params.id);
+
+  if (!motoristaId) {
+    return res.status(400).json({ ok: false, mensagem: "motoristaId invalido" });
+  }
+
+  try {
+    const { data: motorista, error: motoristaError } = await supabase
+      .from("motoristas")
+      .select(
+        `
+        id,
+        usuario_id,
+        usuarios ( id, nome, telefone, email, created_at )
+      `
+      )
+      .eq("id", motoristaId)
+      .maybeSingle();
+
+    if (motoristaError) {
+      return res.status(500).json({ ok: false, mensagem: motoristaError.message });
+    }
+
+    if (!motorista) {
+      return res.status(404).json({ ok: false, mensagem: "Motorista nao encontrado" });
+    }
+
+    const { count, error: countError } = await supabase
+      .from("corridas")
+      .select("id", { count: "exact", head: true })
+      .eq("motorista_id", motoristaId)
+      .eq("status", "finalizada");
+
+    if (countError) {
+      return res.status(500).json({ ok: false, mensagem: countError.message });
+    }
+
+    res.json({
+      ok: true,
+      stats: {
+        corridasFinalizadas: count || 0
+      },
+      motorista
+    });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro ao buscar resumo", erro: String(erro) });
+  }
+});
+
+app.get("/motoristas/:id/historico", async (req, res) => {
+  const motoristaId = Number(req.params.id);
+  const horas = Number(req.query.hours || 24);
+
+  if (!motoristaId) {
+    return res.status(400).json({ ok: false, mensagem: "motoristaId invalido" });
+  }
+
+  const since = new Date(Date.now() - horas * 3600000).toISOString();
+
+  try {
+    const { data, error } = await supabase
+      .from("corridas")
+      .select(
+        "id, origem, destino, status, created_at, finalizada_em, cancelada_em, valor, distancia_km, cancelado_por, motivo_cancelamento"
+      )
+      .eq("motorista_id", motoristaId)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      return res.status(500).json({ ok: false, mensagem: error.message });
+    }
+
+    res.json({ ok: true, corridas: data || [] });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro ao listar historico", erro: String(erro) });
+  }
+});
+
 app.put("/corridas/:id/cheguei", async (req, res) => {
   const corridaId = Number(req.params.id);
   const { motoristaId } = req.body;
@@ -718,7 +798,7 @@ app.put("/corridas/:id/iniciar", async (req, res) => {
 
 app.put("/corridas/:id/cancelar", async (req, res) => {
   const corridaId = Number(req.params.id);
-  const { passageiroId } = req.body;
+  const { passageiroId, motivo } = req.body;
 
   if (!corridaId || !passageiroId) {
     return res.status(400).json({ ok: false, mensagem: "corridaId e passageiroId sao obrigatorios" });
@@ -749,7 +829,12 @@ app.put("/corridas/:id/cancelar", async (req, res) => {
 
     const { data: atualizada, error: updateError } = await supabase
       .from("corridas")
-      .update({ status: "cancelada", cancelada_em: nowIso() })
+      .update({
+        status: "cancelada",
+        cancelado_por: "passageiro",
+        motivo_cancelamento: motivo || null,
+        cancelada_em: nowIso()
+      })
       .eq("id", corridaId)
       .select("*")
       .single();
@@ -784,7 +869,7 @@ app.put("/corridas/:id/cancelar", async (req, res) => {
 
 app.put("/corridas/:id/cancelar-motorista", async (req, res) => {
   const corridaId = Number(req.params.id);
-  const { motoristaId } = req.body;
+  const { motoristaId, motivo } = req.body;
 
   if (!corridaId || !motoristaId) {
     return res.status(400).json({ ok: false, mensagem: "corridaId e motoristaId sao obrigatorios" });
@@ -815,7 +900,12 @@ app.put("/corridas/:id/cancelar-motorista", async (req, res) => {
 
     const { data: atualizada, error: updateError } = await supabase
       .from("corridas")
-      .update({ status: "cancelada", cancelada_em: nowIso() })
+      .update({
+        status: "cancelada",
+        cancelado_por: "motorista",
+        motivo_cancelamento: motivo || null,
+        cancelada_em: nowIso()
+      })
       .eq("id", corridaId)
       .select("*")
       .single();

@@ -711,6 +711,68 @@ body.driver-mode #logoutBtn {
   font-size: 13px;
 }
 
+.history-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.driver-card {
+  display: grid;
+  gap: 10px;
+}
+
+.driver-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.driver-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  background: #111111;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.driver-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.driver-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.driver-car {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.driver-tap {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.driver-details {
+  display: none;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.driver-card.expanded .driver-details {
+  display: grid;
+}
+
 .ride-item strong {
   display: block;
   margin-bottom: 4px;

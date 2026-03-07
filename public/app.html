@@ -92,6 +92,14 @@
           <h3>Corridas pendentes</h3>
           <div class="ride-list" id="pendingRides"></div>
         </div>
+        <div style="margin-top: 16px;">
+          <h3>Historico (24h)</h3>
+          <div class="history-actions">
+            <button class="button secondary small" type="button" id="driverHistoryBtn">Ver historico</button>
+            <button class="button small" type="button" id="driverClearHistoryBtn">Limpar historico</button>
+          </div>
+          <div class="ride-list" id="driverHistoryList"></div>
+        </div>
       </div>
 
       <div class="card map-card">
@@ -223,6 +231,9 @@
     const driverActionButtons = document.getElementById("driverActionButtons");
     const pendingRides = document.getElementById("pendingRides");
     const currentRideBox = document.getElementById("currentRide");
+    const driverHistoryBtn = document.getElementById("driverHistoryBtn");
+    const driverClearHistoryBtn = document.getElementById("driverClearHistoryBtn");
+    const driverHistoryList = document.getElementById("driverHistoryList");
 
     const rideModal = document.getElementById("rideModal");
     const rideModalMeta = document.getElementById("rideModalMeta");
@@ -258,6 +269,7 @@
     let passengerRideStatus = null;
     let passengerStatusPoll = null;
     let passengerDriverInfo = null;
+    let passengerDriverStats = null;
 
     let driverMap = null;
     let driverMarker = null;
@@ -290,6 +302,33 @@
     function clearMessage(element) {
       element.className = "message";
       element.textContent = "";
+    }
+
+    function formatDateShort(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "";
+      return date.toLocaleDateString("pt-BR");
+    }
+
+    function initialsFromName(name) {
+      if (!name) return "M";
+      const parts = String(name).trim().split(/\s+/).filter(Boolean);
+      const initials = parts.slice(0, 2).map((p) => p[0].toUpperCase()).join("");
+      return initials || "M";
+    }
+
+    async function loadPassengerDriverStats(motoristaId) {
+      if (!motoristaId) return;
+      try {
+        const resposta = await fetch(API_BASE + `/motoristas/${motoristaId}/resumo`);
+        const dados = await resposta.json();
+        if (dados.ok) {
+          passengerDriverStats = dados;
+        }
+      } catch (erro) {
+        // silencioso
+      }
     }
 
     async function loadConfig() {
@@ -366,14 +405,36 @@
       const carro = dadosMotorista.carro || "Nao informado";
       const placa = dadosMotorista.placa || "Nao informado";
       const cor = dadosMotorista.cor ? ` (${dadosMotorista.cor})` : "";
+      const criadoEm = formatDateShort(usuarioMotorista.created_at);
+      const corridasFeitas =
+        passengerDriverStats?.stats?.corridasFinalizadas ?? passengerDriverStats?.corridasFinalizadas ?? null;
 
       passengerRideInfo.innerHTML = `
-        <strong>Motorista</strong>: ${nome}<br>
-        <strong>Carro</strong>: ${carro}${cor}<br>
-        <strong>Placa</strong>: ${placa}<br>
-        <strong>Contato</strong>: ${telefone}
+        <div class="driver-card" id="driverCard">
+          <div class="driver-header" id="driverHeader">
+            <div class="driver-avatar">${initialsFromName(nome)}</div>
+            <div class="driver-meta">
+              <div class="driver-name">${nome}</div>
+              <div class="driver-car">${carro}${cor} • ${placa}</div>
+              <div class="driver-tap">Toque para ver detalhes</div>
+            </div>
+          </div>
+          <div class="driver-details" id="driverDetails">
+            <div><strong>Telefone</strong>: ${telefone}</div>
+            ${criadoEm ? `<div><strong>Cadastro</strong>: ${criadoEm}</div>` : ""}
+            ${corridasFeitas !== null ? `<div><strong>Corridas feitas</strong>: ${corridasFeitas}</div>` : ""}
+          </div>
+        </div>
       `;
       passengerRideInfo.classList.remove("hidden");
+
+      const card = passengerRideInfo.querySelector("#driverCard");
+      const header = passengerRideInfo.querySelector("#driverHeader");
+      if (card && header) {
+        header.addEventListener("click", () => {
+          card.classList.toggle("expanded");
+        });
+      }
     }
 
     function setPassengerStatus(status) {
@@ -419,6 +480,9 @@
       passengerWaiting = true;
       passengerActiveRideId = ride?.id || null;
       passengerDriverInfo = ride?.motoristas || null;
+      if (passengerDriverInfo?.id) {
+        loadPassengerDriverStats(passengerDriverInfo.id);
+      }
       if (passengerActiveRideId) {
         localStorage.setItem("passageiroCorridaAtiva", JSON.stringify({ id: passengerActiveRideId }));
       }
@@ -462,6 +526,9 @@
         }
         const status = dados.corrida.status;
         passengerDriverInfo = dados.corrida.motoristas || null;
+        if (passengerDriverInfo?.id) {
+          loadPassengerDriverStats(passengerDriverInfo.id);
+        }
         renderPassengerRideInfo();
         if (status === "finalizada") {
           ensureAudioContext();
@@ -1242,6 +1309,65 @@
         .join("");
     }
 
+    function historyStorageKey() {
+      return motorista ? `motoristaHistoricoClearAt_${motorista.id}` : "motoristaHistoricoClearAt";
+    }
+
+    function renderDriverHistory(lista) {
+      if (!driverHistoryList) return;
+      if (!lista || lista.length === 0) {
+        driverHistoryList.innerHTML = "<div class=\"ride-item\">Nenhuma corrida nas ultimas 24 horas.</div>";
+        return;
+      }
+      driverHistoryList.innerHTML = lista
+        .map((corrida) => {
+          const data = corrida.finalizada_em || corrida.cancelada_em || corrida.created_at;
+          const dataTexto = data ? new Date(data).toLocaleString("pt-BR") : "";
+          let statusTexto = corrida.status === "finalizada" ? "Concluida" : "Cancelada";
+          if (corrida.status === "cancelada") {
+            if (corrida.cancelado_por === "motorista") {
+              statusTexto = "Cancelada por voce";
+            } else if (corrida.cancelado_por === "passageiro") {
+              statusTexto = "Cancelada pelo passageiro";
+            }
+          }
+          const motivo = corrida.motivo_cancelamento ? `<br><strong>Motivo</strong>: ${corrida.motivo_cancelamento}` : "";
+          return `
+            <div class="ride-item">
+              <strong>Corrida #${corrida.id}</strong><br>
+              ${dataTexto ? `${dataTexto}<br>` : ""}
+              Origem: ${corrida.origem}<br>
+              Destino: ${corrida.destino}<br>
+              Valor: R$ ${Number(corrida.valor || 0).toFixed(2)}<br>
+              Status: ${statusTexto}${motivo}
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    async function carregarHistoricoMotorista() {
+      if (!motorista || !driverHistoryList) return;
+      try {
+        const resposta = await fetch(API_BASE + `/motoristas/${motorista.id}/historico?hours=24`);
+        const dados = await resposta.json();
+        if (!dados.ok) {
+          driverHistoryList.innerHTML = "<div class=\"ride-item\">Nao foi possivel carregar o historico.</div>";
+          return;
+        }
+        const clearedAtRaw = localStorage.getItem(historyStorageKey());
+        const clearedAt = clearedAtRaw ? Number(clearedAtRaw) : null;
+        const listaFiltrada = (dados.corridas || []).filter((corrida) => {
+          if (!clearedAt) return true;
+          const ref = new Date(corrida.created_at).getTime();
+          return ref > clearedAt;
+        });
+        renderDriverHistory(listaFiltrada);
+      } catch (erro) {
+        driverHistoryList.innerHTML = "<div class=\"ride-item\">Nao foi possivel carregar o historico.</div>";
+      }
+    }
+
     function openRideModal(corrida) {
       if (!corrida || !rideModal) return;
       rideModalRide = corrida;
@@ -1600,6 +1726,16 @@
         window.aceitarCorrida(rideModalRide.id);
       }
       closeRideModal();
+    });
+
+    driverHistoryBtn?.addEventListener("click", () => {
+      carregarHistoricoMotorista();
+    });
+
+    driverClearHistoryBtn?.addEventListener("click", () => {
+      if (!motorista) return;
+      localStorage.setItem(historyStorageKey(), String(Date.now()));
+      renderDriverHistory([]);
     });
 
     cancelModalClose?.addEventListener("click", closeCancelModal);
