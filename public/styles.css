@@ -774,6 +774,10 @@ body.driver-mode #logoutBtn {
   margin-bottom: 10px;
 }
 
+.history-block {
+  margin-top: 16px;
+}
+
 .driver-card {
   display: grid;
   gap: 12px;

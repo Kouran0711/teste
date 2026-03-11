@@ -687,6 +687,50 @@ app.get("/motoristas/:id/historico", async (req, res) => {
   }
 });
 
+app.get("/passageiros/:id/historico", async (req, res) => {
+  const passageiroId = Number(req.params.id);
+  const horas = Number(req.query.hours || 24);
+
+  if (!passageiroId) {
+    return res.status(400).json({ ok: false, mensagem: "passageiroId invalido" });
+  }
+
+  const since = new Date(Date.now() - horas * 3600000).toISOString();
+
+  try {
+    const { data: usuario, error: usuarioError } = await supabase
+      .from("usuarios")
+      .select("id, tipo")
+      .eq("id", passageiroId)
+      .maybeSingle();
+
+    if (usuarioError) {
+      return res.status(500).json({ ok: false, mensagem: usuarioError.message });
+    }
+
+    if (!usuario || usuario.tipo !== "passageiro") {
+      return res.status(404).json({ ok: false, mensagem: "Passageiro nao encontrado" });
+    }
+
+    const { data, error } = await supabase
+      .from("corridas")
+      .select(
+        "id, origem, destino, status, created_at, finalizada_em, cancelada_em, valor, distancia_km, cancelado_por, motivo_cancelamento"
+      )
+      .eq("passageiro_id", passageiroId)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      return res.status(500).json({ ok: false, mensagem: error.message });
+    }
+
+    res.json({ ok: true, corridas: data || [] });
+  } catch (erro) {
+    res.status(500).json({ ok: false, mensagem: "Erro ao listar historico", erro: String(erro) });
+  }
+});
+
 app.put("/corridas/:id/cheguei", async (req, res) => {
   const corridaId = Number(req.params.id);
   const { motoristaId } = req.body;

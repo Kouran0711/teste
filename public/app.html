@@ -71,6 +71,15 @@
           <div class="fare-amount hidden" id="valorEstimado">Valor da corrida: R$ 0,00</div>
           <button class="button" type="button" id="solicitarCorrida">Iniciar corrida</button>
         </div>
+
+        <div class="history-block" id="passengerHistory">
+          <h3>Historico (24h)</h3>
+          <div class="history-actions">
+            <button class="button secondary small" type="button" id="passengerHistoryBtn">Ver historico</button>
+            <button class="button small" type="button" id="passengerClearHistoryBtn">Limpar historico</button>
+          </div>
+          <div class="ride-list" id="passengerHistoryList"></div>
+        </div>
       </div>
 
       <div class="card hidden drawer" id="driverPanel">
@@ -207,6 +216,9 @@
     const passengerRideInfo = document.getElementById("passengerRideInfo");
     const passengerForm = document.getElementById("passengerForm");
     const passengerProgress = document.getElementById("passengerProgress");
+    const passengerHistoryBtn = document.getElementById("passengerHistoryBtn");
+    const passengerClearHistoryBtn = document.getElementById("passengerClearHistoryBtn");
+    const passengerHistoryList = document.getElementById("passengerHistoryList");
 
     const origemInput = document.getElementById("origemInput");
     const destinoInput = document.getElementById("destinoInput");
@@ -1595,6 +1607,65 @@
       }
     }
 
+    function passengerHistoryStorageKey() {
+      return usuario ? `passageiroHistoricoClearAt_${usuario.id}` : "passageiroHistoricoClearAt";
+    }
+
+    function renderPassengerHistory(lista) {
+      if (!passengerHistoryList) return;
+      if (!lista || lista.length === 0) {
+        passengerHistoryList.innerHTML = "<div class=\"ride-item\">Nenhuma corrida nas ultimas 24 horas.</div>";
+        return;
+      }
+      passengerHistoryList.innerHTML = lista
+        .map((corrida) => {
+          const data = corrida.finalizada_em || corrida.cancelada_em || corrida.created_at;
+          const dataTexto = data ? new Date(data).toLocaleString("pt-BR") : "";
+          let statusTexto = corrida.status === "finalizada" ? "Concluida" : "Cancelada";
+          if (corrida.status === "cancelada") {
+            if (corrida.cancelado_por === "passageiro") {
+              statusTexto = "Cancelada por voce";
+            } else if (corrida.cancelado_por === "motorista") {
+              statusTexto = "Cancelada pelo motorista";
+            }
+          }
+          const motivo = corrida.motivo_cancelamento ? `<br><strong>Motivo</strong>: ${corrida.motivo_cancelamento}` : "";
+          return `
+            <div class="ride-item">
+              <strong>Corrida #${corrida.id}</strong><br>
+              ${dataTexto ? `${dataTexto}<br>` : ""}
+              Origem: ${shortAddressList(corrida.origem)}<br>
+              Destino: ${shortAddressList(corrida.destino)}<br>
+              Valor: R$ ${Number(corrida.valor || 0).toFixed(2)}<br>
+              Status: ${statusTexto}${motivo}
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    async function carregarHistoricoPassageiro() {
+      if (!usuario || usuario.tipo !== "passageiro" || !passengerHistoryList) return;
+      try {
+        const resposta = await fetch(API_BASE + `/passageiros/${usuario.id}/historico?hours=24`);
+        const dados = await resposta.json();
+        if (!dados.ok) {
+          passengerHistoryList.innerHTML = "<div class=\"ride-item\">Nao foi possivel carregar o historico.</div>";
+          return;
+        }
+        const clearedAtRaw = localStorage.getItem(passengerHistoryStorageKey());
+        const clearedAt = clearedAtRaw ? Number(clearedAtRaw) : null;
+        const listaFiltrada = (dados.corridas || []).filter((corrida) => {
+          if (!clearedAt) return true;
+          const ref = new Date(corrida.created_at).getTime();
+          return ref > clearedAt;
+        });
+        renderPassengerHistory(listaFiltrada);
+      } catch (erro) {
+        passengerHistoryList.innerHTML = "<div class=\"ride-item\">Nao foi possivel carregar o historico.</div>";
+      }
+    }
+
     function openRideModal(corrida) {
       if (!corrida || !rideModal) return;
       rideModalRide = corrida;
@@ -2011,6 +2082,16 @@
       if (!motorista) return;
       localStorage.setItem(historyStorageKey(), String(Date.now()));
       renderDriverHistory([]);
+    });
+
+    passengerHistoryBtn?.addEventListener("click", () => {
+      carregarHistoricoPassageiro();
+    });
+
+    passengerClearHistoryBtn?.addEventListener("click", () => {
+      if (!usuario || usuario.tipo !== "passageiro") return;
+      localStorage.setItem(passengerHistoryStorageKey(), String(Date.now()));
+      renderPassengerHistory([]);
     });
 
     cancelModalClose?.addEventListener("click", closeCancelModal);
