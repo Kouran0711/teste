@@ -787,6 +787,18 @@ body.driver-mode #logoutBtn {
   font-size: 13px;
 }
 
+.fare-amount {
+  font-size: 22px;
+  font-weight: 800;
+  color: #111111;
+  background: #ffffff;
+  border: 2px solid #111111;
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  letter-spacing: -0.01em;
+}
+
 .hidden {
   display: none;
 }

@@ -11,7 +11,7 @@
   >
   <link
     rel="stylesheet"
-    href="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.css"
+    href="https://unpkg.com/leaflet/dist/leaflet.css"
   >
 </head>
 <body>
@@ -66,7 +66,7 @@
               <option value="pix">Pix</option>
             </select>
           </div>
-          <div class="muted" id="valorEstimado">Valor estimado: R$ 0,00</div>
+          <div class="fare-amount" id="valorEstimado">Valor da corrida: R$ 0,00</div>
           <button class="button" type="button" id="solicitarCorrida">Iniciar corrida</button>
         </div>
       </div>
@@ -167,14 +167,11 @@
     </div>
   </div>
 
-  <script src="https://api.mapbox.com/mapbox-gl-js/v3.18.1/mapbox-gl.js"></script>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
     const API_BASE = window.location.origin && window.location.origin.startsWith("http")
       ? window.location.origin
       : "http://localhost:10000";
-
-    let MAPBOX_TOKEN = "";
-    let MAPBOX_STYLE = "mapbox://styles/mapbox/streets-v12";
 
     const sessionRaw = localStorage.getItem("corridaSession");
     const session = sessionRaw ? JSON.parse(sessionRaw) : null;
@@ -253,7 +250,7 @@
     let passengerMap = null;
     let passengerOriginMarker = null;
     let passengerDestinationMarker = null;
-    let passengerRouteId = "passenger-route";
+    let passengerRouteLine = null;
     let passengerOriginCoords = null;
     let passengerDestinationCoords = null;
     let passengerDistanceKm = null;
@@ -277,7 +274,7 @@
     let driverMarker = null;
     let pickupMarker = null;
     let dropoffMarker = null;
-    let driverRouteId = "driver-route";
+    let driverRouteLine = null;
     let driverPosition = null;
     let driverOnline = false;
     let driverInRide = false;
@@ -295,6 +292,7 @@
     let driverGpsEnabled = false;
     let driverWatchId = null;
     let driverRidePoll = null;
+    let driverHeading = null;
 
     function showMessage(element, type, text) {
       element.className = `message ${type} show`;
@@ -337,22 +335,8 @@
       try {
         const resposta = await fetch(API_BASE + "/config");
         const dados = await resposta.json();
-        if (dados && dados.mapboxToken) {
-          MAPBOX_TOKEN = dados.mapboxToken;
-        }
-        if (dados && dados.mapboxStyle) {
-          MAPBOX_STYLE = dados.mapboxStyle;
-        }
       } catch (erro) {
-        showMessage(passengerMessage, "error", "Nao foi possivel carregar configuracoes do servidor.");
-        showMessage(driverMessage, "error", "Nao foi possivel carregar configuracoes do servidor.");
-        return false;
-      }
-
-      if (!MAPBOX_TOKEN) {
-        showMessage(passengerMessage, "error", "Chave Mapbox nao configurada no servidor (MAPBOX_TOKEN).");
-        showMessage(driverMessage, "error", "Chave Mapbox nao configurada no servidor (MAPBOX_TOKEN).");
-        return false;
+        // configuracoes opcionais
       }
 
       return true;
@@ -600,23 +584,17 @@
     logoutBtn.addEventListener("click", handleLogout);
     drawerLogout?.addEventListener("click", handleLogout);
 
-    function ensureMapbox() {
-      if (!MAPBOX_TOKEN) {
-        showMessage(passengerMessage, "error", "Chave Mapbox nao configurada no servidor (MAPBOX_TOKEN).");
-        showMessage(driverMessage, "error", "Chave Mapbox nao configurada no servidor (MAPBOX_TOKEN).");
-        return false;
-      }
+    function ensureLeaflet() {
       if (!window.isSecureContext && window.location.hostname !== "localhost") {
         showMessage(passengerMessage, "error", "A localizacao exige HTTPS. Acesse usando https.");
         showMessage(driverMessage, "error", "A localizacao exige HTTPS. Acesse usando https.");
         return false;
       }
-      if (!mapboxgl || !mapboxgl.supported()) {
-        showMessage(passengerMessage, "error", "Mapbox nao suportado neste navegador.");
-        showMessage(driverMessage, "error", "Mapbox nao suportado neste navegador.");
+      if (!window.L) {
+        showMessage(passengerMessage, "error", "Mapa nao suportado neste navegador.");
+        showMessage(driverMessage, "error", "Mapa nao suportado neste navegador.");
         return false;
       }
-      mapboxgl.accessToken = MAPBOX_TOKEN;
       return true;
     }
 
@@ -673,55 +651,46 @@
     }
 
     async function forwardGeocode(query, proximity) {
-      if (!MAPBOX_TOKEN) {
-        return [];
-      }
-      const url = new URL("https://api.mapbox.com/search/geocode/v6/forward");
+      const url = new URL("https://nominatim.openstreetmap.org/search");
       url.searchParams.set("q", query);
-      url.searchParams.set("access_token", MAPBOX_TOKEN);
+      url.searchParams.set("format", "jsonv2");
+      url.searchParams.set("addressdetails", "1");
       url.searchParams.set("limit", "5");
-      url.searchParams.set("types", "address");
-      url.searchParams.set("language", "pt");
-      url.searchParams.set("country", "br");
-      if (proximity && Number.isFinite(proximity.lng) && Number.isFinite(proximity.lat)) {
-        url.searchParams.set("proximity", `${proximity.lng},${proximity.lat}`);
-      }
-      const resposta = await fetch(url.toString());
+      url.searchParams.set("countrycodes", "br");
+      const resposta = await fetch(url.toString(), {
+        headers: { "Accept-Language": "pt-BR" }
+      });
       const dados = await resposta.json();
-      const features = dados.features || [];
-      return features.map((feature) => ({
-        label: feature.properties?.full_address || feature.properties?.name || feature.place_name || feature.text,
+      return (dados || []).map((item) => ({
+        label: item.display_name,
         coords: {
-          lng: feature.geometry.coordinates[0],
-          lat: feature.geometry.coordinates[1]
+          lng: Number(item.lon),
+          lat: Number(item.lat)
         }
       }));
     }
 
     async function reverseGeocode(coords) {
-      if (!MAPBOX_TOKEN) {
+      if (!coords) {
         return null;
       }
-      const url = new URL("https://api.mapbox.com/search/geocode/v6/reverse");
-      url.searchParams.set("longitude", coords.lng);
-      url.searchParams.set("latitude", coords.lat);
-      url.searchParams.set("access_token", MAPBOX_TOKEN);
-      url.searchParams.set("language", "pt");
-      const resposta = await fetch(url.toString());
+      const url = new URL("https://nominatim.openstreetmap.org/reverse");
+      url.searchParams.set("format", "jsonv2");
+      url.searchParams.set("lat", coords.lat);
+      url.searchParams.set("lon", coords.lng);
+      url.searchParams.set("zoom", "18");
+      url.searchParams.set("addressdetails", "1");
+      const resposta = await fetch(url.toString(), {
+        headers: { "Accept-Language": "pt-BR" }
+      });
       const dados = await resposta.json();
-      const feature = (dados.features || [])[0];
-      if (!feature) return null;
-      return feature.properties?.full_address || feature.properties?.name || feature.place_name || feature.text;
+      return dados.display_name || null;
     }
 
     async function fetchRoute(origin, destination) {
-      if (!MAPBOX_TOKEN) {
-        return null;
-      }
       const url = new URL(
-        `https://api.mapbox.com/directions/v5/mapbox/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}`
+        `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}`
       );
-      url.searchParams.set("access_token", MAPBOX_TOKEN);
       url.searchParams.set("geometries", "geojson");
       url.searchParams.set("overview", "full");
       const resposta = await fetch(url.toString());
@@ -736,47 +705,65 @@
       };
     }
 
-    function setRoute(map, id, geojson, color) {
-      if (!map || !geojson) return;
-      const source = map.getSource(id);
-      if (source) {
-        source.setData(geojson);
+    function setRoute(map, tipo, geojson, color) {
+      if (!map || !geojson || !geojson.geometry) return;
+      const coords = (geojson.geometry.coordinates || []).map((point) => [point[1], point[0]]);
+      if (!coords.length) return;
+      if (tipo === "passenger") {
+        if (passengerRouteLine) {
+          passengerMap.removeLayer(passengerRouteLine);
+        }
+        passengerRouteLine = L.polyline(coords, { color: color || "#0e7c86", weight: 4, opacity: 0.9 }).addTo(
+          passengerMap
+        );
       } else {
-        map.addSource(id, { type: "geojson", data: geojson });
-        map.addLayer({
-          id,
-          type: "line",
-          source: id,
-          layout: { "line-join": "round", "line-cap": "round" },
-          paint: { "line-color": color || "#0e7c86", "line-width": 4 }
-        });
+        if (driverRouteLine) {
+          driverMap.removeLayer(driverRouteLine);
+        }
+        driverRouteLine = L.polyline(coords, { color: color || "#2563eb", weight: 4, opacity: 0.9 }).addTo(
+          driverMap
+        );
       }
     }
 
     function fitBounds(map, origin, destination) {
       if (!map || !origin || !destination) return;
-      const bounds = new mapboxgl.LngLatBounds();
-      bounds.extend([origin.lng, origin.lat]);
-      bounds.extend([destination.lng, destination.lat]);
-      map.fitBounds(bounds, { padding: 60, maxZoom: 15 });
+      const bounds = L.latLngBounds(
+        [origin.lat, origin.lng],
+        [destination.lat, destination.lng]
+      );
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
     }
 
     function initPassengerMap() {
-      if (!ensureMapbox()) return;
-      passengerMap = new mapboxgl.Map({
-        container: "passengerMap",
-        style: MAPBOX_STYLE,
-        center: [-46.6333, -23.5505],
-        zoom: 13
-      });
+      if (!ensureLeaflet()) return;
+      passengerMap = L.map("passengerMap").setView([-23.5505, -46.6333], 13);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap"
+      }).addTo(passengerMap);
+      passengerMapReady = true;
 
-      passengerMap.on("load", () => {
-        passengerMapReady = true;
-      });
-
-      passengerOriginMarker = new mapboxgl.Marker({ color: "#0e7c86" }).setLngLat([-46.6333, -23.5505]);
-      passengerDestinationMarker = new mapboxgl.Marker({ color: "#f97316" }).setLngLat([-46.6333, -23.5505]);
-      passengerLiveMarker = new mapboxgl.Marker({ color: "#2563eb" }).setLngLat([-46.6333, -23.5505]);
+      passengerOriginMarker = L.circleMarker([-23.5505, -46.6333], {
+        color: "#0e7c86",
+        radius: 6,
+        weight: 3,
+        fillColor: "#0e7c86",
+        fillOpacity: 0.9
+      }).addTo(passengerMap);
+      passengerDestinationMarker = L.circleMarker([-23.5505, -46.6333], {
+        color: "#f97316",
+        radius: 6,
+        weight: 3,
+        fillColor: "#f97316",
+        fillOpacity: 0.9
+      }).addTo(passengerMap);
+      passengerLiveMarker = L.circleMarker([-23.5505, -46.6333], {
+        color: "#2563eb",
+        radius: 6,
+        weight: 3,
+        fillColor: "#2563eb",
+        fillOpacity: 0.9
+      }).addTo(passengerMap);
 
       startPassengerWatch();
       requestPassengerLocation();
@@ -823,13 +810,22 @@
     function updatePassengerMarkers() {
       if (!passengerMap) return;
       if (passengerOriginCoords) {
-        passengerOriginMarker.setLngLat([passengerOriginCoords.lng, passengerOriginCoords.lat]).addTo(passengerMap);
+        passengerOriginMarker.setLatLng([passengerOriginCoords.lat, passengerOriginCoords.lng]);
+        if (!passengerMap.hasLayer(passengerOriginMarker)) {
+          passengerOriginMarker.addTo(passengerMap);
+        }
       }
       if (passengerDestinationCoords) {
-        passengerDestinationMarker.setLngLat([passengerDestinationCoords.lng, passengerDestinationCoords.lat]).addTo(passengerMap);
+        passengerDestinationMarker.setLatLng([passengerDestinationCoords.lat, passengerDestinationCoords.lng]);
+        if (!passengerMap.hasLayer(passengerDestinationMarker)) {
+          passengerDestinationMarker.addTo(passengerMap);
+        }
       }
       if (passengerLivePosition) {
-        passengerLiveMarker.setLngLat([passengerLivePosition.lng, passengerLivePosition.lat]).addTo(passengerMap);
+        passengerLiveMarker.setLatLng([passengerLivePosition.lat, passengerLivePosition.lng]);
+        if (!passengerMap.hasLayer(passengerLiveMarker)) {
+          passengerLiveMarker.addTo(passengerMap);
+        }
       }
       if (passengerOriginCoords && passengerDestinationCoords) {
         fitBounds(passengerMap, passengerOriginCoords, passengerDestinationCoords);
@@ -901,10 +897,10 @@
 
       passengerDistanceKm = route.distanceKm;
       const valor = passengerDistanceKm * 1.9;
-      valorEstimado.textContent = `Valor estimado: R$ ${valor.toFixed(2)} (${passengerDistanceKm.toFixed(2)} km)`;
+      valorEstimado.textContent = `Valor da corrida: R$ ${valor.toFixed(2)}`;
 
       if (passengerMapReady) {
-        setRoute(passengerMap, passengerRouteId, { type: "Feature", geometry: route.geometry }, "#0e7c86");
+        setRoute(passengerMap, "passenger", { type: "Feature", geometry: route.geometry }, "#0e7c86");
       }
       updatePassengerMarkers();
       passengerLastRouteUpdate = Date.now();
@@ -945,8 +941,7 @@
               updatePassengerRoute();
             }
           } else if (passengerMapReady && passengerOriginMode === "auto" && passengerLivePosition) {
-            passengerMap.setCenter([passengerLivePosition.lng, passengerLivePosition.lat]);
-            passengerMap.setZoom(15);
+            passengerMap.setView([passengerLivePosition.lat, passengerLivePosition.lng], 15);
           }
         },
         (error) => {
@@ -959,21 +954,34 @@
     }
 
     function initDriverMap() {
-      if (!ensureMapbox()) return;
-      driverMap = new mapboxgl.Map({
-        container: "driverMap",
-        style: MAPBOX_STYLE,
-        center: [-46.6333, -23.5505],
-        zoom: 13
-      });
+      if (!ensureLeaflet()) return;
+      driverMap = L.map("driverMap").setView([-23.5505, -46.6333], 13);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap"
+      }).addTo(driverMap);
+      driverMapReady = true;
 
-      driverMap.on("load", () => {
-        driverMapReady = true;
-      });
-
-      driverMarker = new mapboxgl.Marker({ color: "#0e7c86" }).setLngLat([-46.6333, -23.5505]);
-      pickupMarker = new mapboxgl.Marker({ color: "#2563eb" }).setLngLat([-46.6333, -23.5505]);
-      dropoffMarker = new mapboxgl.Marker({ color: "#f97316" }).setLngLat([-46.6333, -23.5505]);
+      driverMarker = L.circleMarker([-23.5505, -46.6333], {
+        color: "#0e7c86",
+        radius: 6,
+        weight: 3,
+        fillColor: "#0e7c86",
+        fillOpacity: 0.9
+      }).addTo(driverMap);
+      pickupMarker = L.circleMarker([-23.5505, -46.6333], {
+        color: "#2563eb",
+        radius: 6,
+        weight: 3,
+        fillColor: "#2563eb",
+        fillOpacity: 0.9
+      }).addTo(driverMap);
+      dropoffMarker = L.circleMarker([-23.5505, -46.6333], {
+        color: "#f97316",
+        radius: 6,
+        weight: 3,
+        fillColor: "#f97316",
+        fillOpacity: 0.9
+      }).addTo(driverMap);
     }
 
     function updateDriverMarkers() {
@@ -982,14 +990,25 @@
         driverMarker?.remove();
         return;
       }
-      driverMarker.setLngLat([driverPosition.lng, driverPosition.lat]).addTo(driverMap);
+      driverMarker.setLatLng([driverPosition.lat, driverPosition.lng]);
+      if (!driverMap.hasLayer(driverMarker)) {
+        driverMarker.addTo(driverMap);
+      }
+      if (driverGpsEnabled && driverPosition) {
+        const targetZoom = currentRide ? 15.5 : 14.5;
+        driverMap.setView([driverPosition.lat, driverPosition.lng], targetZoom, {
+          animate: true,
+          duration: 0.7
+        });
+        return;
+      }
       if (currentRide && currentRide.status === "em_andamento") {
         return;
       }
       if (driverRouteTarget) {
         fitBounds(driverMap, driverPosition, driverRouteTarget);
       } else {
-        driverMap.setCenter([driverPosition.lng, driverPosition.lat]);
+        driverMap.panTo([driverPosition.lat, driverPosition.lng]);
       }
     }
 
@@ -1012,28 +1031,28 @@
         origin = { lat: currentRide.origemLat, lng: currentRide.origemLng };
         destination = { lat: currentRide.destinoLat, lng: currentRide.destinoLng };
         color = "#f97316";
-        pickupMarker.setLngLat([origin.lng, origin.lat]).addTo(driverMap);
-        dropoffMarker.setLngLat([destination.lng, destination.lat]).addTo(driverMap);
+        pickupMarker.setLatLng([origin.lat, origin.lng]);
+        dropoffMarker.setLatLng([destination.lat, destination.lng]);
       } else if (driverPosition && driverRouteTarget) {
         origin = driverPosition;
         destination = driverRouteTarget;
       } else if (driverPosition && hasRideCoords) {
         origin = driverPosition;
         destination = { lat: currentRide.origemLat, lng: currentRide.origemLng };
-        pickupMarker.setLngLat([destination.lng, destination.lat]).addTo(driverMap);
+        pickupMarker.setLatLng([destination.lat, destination.lng]);
       } else if (hasRideCoords) {
         origin = { lat: currentRide.origemLat, lng: currentRide.origemLng };
         destination = { lat: currentRide.destinoLat, lng: currentRide.destinoLng };
         color = "#f97316";
-        pickupMarker.setLngLat([origin.lng, origin.lat]).addTo(driverMap);
-        dropoffMarker.setLngLat([destination.lng, destination.lat]).addTo(driverMap);
+        pickupMarker.setLatLng([origin.lat, origin.lng]);
+        dropoffMarker.setLatLng([destination.lat, destination.lng]);
       } else {
         return;
       }
 
       const route = await fetchRoute(origin, destination);
       if (!route) return;
-      setRoute(driverMap, driverRouteId, { type: "Feature", geometry: route.geometry }, color);
+      setRoute(driverMap, "driver", { type: "Feature", geometry: route.geometry }, color);
       fitBounds(driverMap, origin, destination);
       updateDriverMarkers();
     }
@@ -1041,10 +1060,10 @@
     function setDriverTarget(tipo, coords) {
       driverRouteTarget = coords;
       if (tipo === "pickup") {
-        pickupMarker.setLngLat([coords.lng, coords.lat]).addTo(driverMap);
+        pickupMarker.setLatLng([coords.lat, coords.lng]);
         dropoffMarker.remove();
       } else if (tipo === "dropoff") {
-        dropoffMarker.setLngLat([coords.lng, coords.lat]).addTo(driverMap);
+        dropoffMarker.setLatLng([coords.lat, coords.lng]);
       }
       updateDriverRoute(true);
     }
@@ -1301,12 +1320,10 @@
       driverInRide = false;
       updateDriverStatus();
       renderCurrentRide();
-      if (driverMap && driverMap.getSource(driverRouteId)) {
-        driverMap.removeLayer(driverRouteId);
-        driverMap.removeSource(driverRouteId);
+      if (driverMap && driverRouteLine) {
+        driverMap.removeLayer(driverRouteLine);
+        driverRouteLine = null;
       }
-      pickupMarker?.remove();
-      dropoffMarker?.remove();
       driverRouteTarget = null;
       updateDriverInstruction();
       if (message) {
@@ -1739,6 +1756,9 @@
       driverWatchId = navigator.geolocation.watchPosition(
         async (pos) => {
           driverPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          if (Number.isFinite(pos.coords.heading)) {
+            driverHeading = pos.coords.heading;
+          }
           updateDriverLocationDisplay();
           updateDriverMarkers();
           await atualizarMotoristaStatus();
@@ -1755,6 +1775,7 @@
     function stopDriverGps() {
       driverGpsEnabled = false;
       driverPosition = null;
+      driverHeading = null;
       driverGpsBtn.textContent = "Ativar GPS";
       updateDriverLocationDisplay();
       if (driverWatchId !== null) {
