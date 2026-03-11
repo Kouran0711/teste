@@ -72,6 +72,14 @@
           <button class="button" type="button" id="solicitarCorrida">Iniciar corrida</button>
         </div>
 
+      </div>
+
+      <div class="card hidden drawer" id="passengerDrawer">
+        <div class="drawer-header">
+          <h2>Menu do passageiro</h2>
+          <button class="icon-button" id="passengerMenuClose" aria-label="Fechar menu">X</button>
+        </div>
+        <p>Suas corridas recentes e atalhos rapidos.</p>
         <div class="history-block" id="passengerHistory">
           <h3>Historico (24h)</h3>
           <div class="history-actions">
@@ -80,6 +88,7 @@
           </div>
           <div class="ride-list" id="passengerHistoryList"></div>
         </div>
+        <button class="button secondary" type="button" id="passengerDrawerLogout">Sair</button>
       </div>
 
       <div class="card hidden drawer" id="driverPanel">
@@ -203,6 +212,9 @@
     const driverToggleTop = document.getElementById("driverToggleTop");
     const drawerLogout = document.getElementById("drawerLogout");
     const passengerPanel = document.getElementById("passengerPanel");
+    const passengerDrawer = document.getElementById("passengerDrawer");
+    const passengerMenuClose = document.getElementById("passengerMenuClose");
+    const passengerDrawerLogout = document.getElementById("passengerDrawerLogout");
     const driverPanel = document.getElementById("driverPanel");
     const passengerMapEl = document.getElementById("passengerMap");
     const driverMapEl = document.getElementById("driverMap");
@@ -395,6 +407,7 @@
       const isPassenger = usuario.tipo === "passageiro";
       passengerPanel.classList.toggle("hidden", !isPassenger);
       passengerMapEl.classList.toggle("hidden", !isPassenger);
+      passengerDrawer?.classList.toggle("hidden", !isPassenger);
       driverPanel.classList.toggle("hidden", isPassenger);
       driverMapEl.classList.toggle("hidden", isPassenger);
       if (isPassenger) {
@@ -648,6 +661,7 @@
 
     menuToggle?.addEventListener("click", () => setMenuOpen(true));
     menuClose?.addEventListener("click", () => setMenuOpen(false));
+    passengerMenuClose?.addEventListener("click", () => setMenuOpen(false));
     menuOverlay?.addEventListener("click", () => setMenuOpen(false));
 
     function handleLogout() {
@@ -657,6 +671,7 @@
 
     logoutBtn.addEventListener("click", handleLogout);
     drawerLogout?.addEventListener("click", handleLogout);
+    passengerDrawerLogout?.addEventListener("click", handleLogout);
 
     function ensureLeaflet() {
       if (!window.isSecureContext && window.location.hostname !== "localhost") {
@@ -2285,7 +2300,7 @@
 
       if (usuario.tipo === "passageiro") {
         document.body.classList.remove("driver-mode");
-        menuToggle?.classList.add("hidden");
+        menuToggle?.classList.remove("hidden");
         driverControls?.classList.add("hidden");
         driverActionBar?.classList.add("hidden");
         initPassengerMap();
