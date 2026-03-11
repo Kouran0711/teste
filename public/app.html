@@ -529,6 +529,7 @@
       localStorage.removeItem("passageiroCorridaAtiva");
       passengerWaitingBox.classList.add("hidden");
       setPassengerFormEnabled(true);
+      resetPassengerForm();
       stopPassengerPoll();
       passengerRideStatus = null;
       renderPassengerRideInfo();
@@ -544,6 +545,23 @@
         cancelRideBtn.disabled = true;
       }
       setPassengerFormEnabled(false);
+    }
+
+    function resetPassengerForm() {
+      passengerOriginMode = "manual";
+      passengerOriginCoords = null;
+      passengerDestinationCoords = null;
+      passengerDistanceKm = null;
+      passengerAutoLabel = "";
+      if (origemInput) origemInput.value = "";
+      if (destinoInput) destinoInput.value = "";
+      if (valorEstimado) valorEstimado.classList.add("hidden");
+      if (routeSummary) routeSummary.classList.add("hidden");
+      if (passengerMap && passengerRouteLine) {
+        passengerMap.removeLayer(passengerRouteLine);
+        passengerRouteLine = null;
+      }
+      updatePassengerMarkers();
     }
 
     async function fetchPassengerRideStatus() {
@@ -868,12 +886,16 @@
         if (!passengerMap.hasLayer(passengerOriginMarker)) {
           passengerOriginMarker.addTo(passengerMap);
         }
+      } else if (passengerOriginMarker && passengerMap.hasLayer(passengerOriginMarker)) {
+        passengerMap.removeLayer(passengerOriginMarker);
       }
       if (passengerDestinationCoords) {
         passengerDestinationMarker.setLatLng([passengerDestinationCoords.lat, passengerDestinationCoords.lng]);
         if (!passengerMap.hasLayer(passengerDestinationMarker)) {
           passengerDestinationMarker.addTo(passengerMap);
         }
+      } else if (passengerDestinationMarker && passengerMap.hasLayer(passengerDestinationMarker)) {
+        passengerMap.removeLayer(passengerDestinationMarker);
       }
       if (passengerLivePosition) {
         passengerLiveMarker.setLatLng([passengerLivePosition.lat, passengerLivePosition.lng]);
