@@ -498,7 +498,7 @@ app.get("/corridas/pendentes", async (req, res) => {
 
     const { data: corridas, error: corridasError } = await supabase
       .from("corridas")
-      .select("*")
+      .select("*, passageiro:usuarios!corridas_passageiro_id_fkey ( id, nome, telefone )")
       .eq("status", "aguardando_motorista")
       .order("created_at", { ascending: true });
 

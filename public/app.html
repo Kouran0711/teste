@@ -437,8 +437,14 @@
             <div class="driver-meta">
               <div class="driver-name">${nome}</div>
               <div class="driver-vehicle">
-                <span class="driver-model">${carro}${cor}</span>
-                <span class="driver-plate">${placa}</span>
+                <div class="driver-vehicle-row">
+                  <span class="driver-vehicle-label">Veiculo</span>
+                  <span class="driver-model">${carro}${cor}</span>
+                </div>
+                <div class="driver-vehicle-row">
+                  <span class="driver-vehicle-label">Placa</span>
+                  <span class="driver-plate">${placa}</span>
+                </div>
               </div>
               <div class="driver-tap">Toque para ver detalhes</div>
             </div>
@@ -1491,9 +1497,11 @@
           const dist = corrida.distanciaParaMotoristaKm !== null
             ? `${corrida.distanciaParaMotoristaKm.toFixed(2)} km`
             : "distancia nao informada";
+          const passageiroNome = corrida.passageiro?.nome || "Passageiro";
           return `
             <div class="ride-item">
               <strong>Corrida #${corrida.id}</strong>
+              <div class="ride-passenger">Passageiro: ${passageiroNome}</div>
               Origem: ${shortAddressList(corrida.origem)}<br>
               Destino: ${shortAddressList(corrida.destino)}<br>
               Valor: R$ ${Number(corrida.valor || 0).toFixed(2)}<br>
@@ -1581,7 +1589,9 @@
         : "distancia nao informada";
 
       rideModalMeta.textContent = `Corrida #${corrida.id}`;
+      const passageiroNome = corrida.passageiro?.nome || "Passageiro";
       rideModalDetails.innerHTML = `
+        <strong>Passageiro</strong>: ${passageiroNome}<br>
         <strong>Origem</strong>: ${shortAddressList(corrida.origem)}<br>
         <strong>Destino</strong>: ${shortAddressList(corrida.destino)}<br>
         <strong>Valor</strong>: R$ ${Number(corrida.valor || 0).toFixed(2)}<br>
