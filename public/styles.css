@@ -320,6 +320,9 @@ body.driver-mode .waiting-box {
   background: rgba(255, 255, 255, 0.92);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(10px);
+  z-index: 1200;
+  position: sticky;
+  top: 0;
 }
 
 .topbar .button {
@@ -371,6 +374,7 @@ body.driver-mode .waiting-box {
 .map-card {
   padding: 12px;
   position: relative;
+  z-index: 1;
 }
 
 .map-box {
@@ -384,7 +388,7 @@ body.driver-mode .waiting-box {
   position: absolute;
   top: 16px;
   right: 16px;
-  z-index: 5;
+  z-index: 1100;
   display: grid;
   gap: 8px;
   width: min(360px, 90vw);
@@ -426,7 +430,7 @@ body.driver-mode .waiting-box {
   left: 50%;
   bottom: 16px;
   transform: translateX(-50%);
-  z-index: 12;
+  z-index: 1100;
   width: min(520px, calc(100% - 24px));
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid var(--border);
@@ -481,7 +485,7 @@ body.driver-mode .waiting-box {
   height: 100vh;
   transform: translateX(-110%);
   transition: transform 0.25s ease;
-  z-index: 30;
+  z-index: 1300;
   overflow-y: auto;
 }
 
@@ -500,7 +504,7 @@ body.driver-mode .waiting-box {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
-  z-index: 25;
+  z-index: 1250;
 }
 
 body.menu-open .menu-overlay {
@@ -519,7 +523,7 @@ body.menu-open .drawer {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 20;
+  z-index: 1400;
   padding: 20px;
 }
 
@@ -549,6 +553,10 @@ body.menu-open .drawer {
 .modal-actions {
   display: grid;
   gap: 10px;
+}
+
+.leaflet-container {
+  z-index: 1;
 }
 
 body.modal-open {
@@ -589,7 +597,7 @@ body.driver-mode .topbar {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 6;
+  z-index: 1200;
   background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);

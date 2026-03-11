@@ -293,6 +293,10 @@
     let driverWatchId = null;
     let driverRidePoll = null;
     let driverHeading = null;
+    let driverLastMapUpdate = 0;
+    let driverLastMapPos = null;
+    let driverLastRouteUpdate = 0;
+    let driverLastRouteKey = "";
 
     function showMessage(element, type, text) {
       element.className = `message ${type} show`;
@@ -316,6 +320,19 @@
       const parts = String(name).trim().split(/\s+/).filter(Boolean);
       const initials = parts.slice(0, 2).map((p) => p[0].toUpperCase()).join("");
       return initials || "M";
+    }
+
+    function distanceMeters(a, b) {
+      if (!a || !b) return Infinity;
+      const R = 6371000;
+      const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+      const dLon = ((b.lng - a.lng) * Math.PI) / 180;
+      const lat1 = (a.lat * Math.PI) / 180;
+      const lat2 = (b.lat * Math.PI) / 180;
+      const sinDLat = Math.sin(dLat / 2);
+      const sinDLon = Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon), Math.sqrt(1 - (sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon)));
+      return R * c;
     }
 
     async function loadPassengerDriverStats(motoristaId) {
@@ -886,6 +903,9 @@
     async function updatePassengerRoute() {
       clearMessage(passengerMessage);
       if (!passengerOriginCoords || !passengerDestinationCoords) {
+        if (valorEstimado) {
+          valorEstimado.textContent = "Valor da corrida: R$ 0,00";
+        }
         return null;
       }
 
@@ -996,10 +1016,16 @@
       }
       if (driverGpsEnabled && driverPosition) {
         const targetZoom = currentRide ? 15.5 : 14.5;
-        driverMap.setView([driverPosition.lat, driverPosition.lng], targetZoom, {
-          animate: true,
-          duration: 0.7
-        });
+        const now = Date.now();
+        const dist = driverLastMapPos ? distanceMeters(driverLastMapPos, driverPosition) : Infinity;
+        if (now - driverLastMapUpdate > 1200 || dist > 8) {
+          driverMap.setView([driverPosition.lat, driverPosition.lng], targetZoom, {
+            animate: true,
+            duration: 0.7
+          });
+          driverLastMapUpdate = now;
+          driverLastMapPos = { ...driverPosition };
+        }
         return;
       }
       if (currentRide && currentRide.status === "em_andamento") {
@@ -1050,11 +1076,19 @@
         return;
       }
 
+      const routeKey = `${origin.lat},${origin.lng}|${destination.lat},${destination.lng}|${color}`;
+      const now = Date.now();
+      if (!force && routeKey === driverLastRouteKey && now - driverLastRouteUpdate < 12000) {
+        return;
+      }
+
       const route = await fetchRoute(origin, destination);
       if (!route) return;
       setRoute(driverMap, "driver", { type: "Feature", geometry: route.geometry }, color);
       fitBounds(driverMap, origin, destination);
       updateDriverMarkers();
+      driverLastRouteKey = routeKey;
+      driverLastRouteUpdate = now;
     }
 
     function setDriverTarget(tipo, coords) {
