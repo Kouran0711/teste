@@ -43,7 +43,7 @@
           <div class="progress-bar" id="passengerProgress" aria-hidden="true"><span></span></div>
           <button class="button secondary" type="button" id="cancelRideBtn">Cancelar corrida</button>
         </div>
-        <div id="passengerRideInfo" class="ride-item hidden"></div>
+        <div id="passengerRideInfo" class="ride-item driver-summary hidden"></div>
 
         <div id="passengerForm">
           <div class="form-field autocomplete">
@@ -436,7 +436,10 @@
             <div class="driver-avatar">${initialsFromName(nome)}</div>
             <div class="driver-meta">
               <div class="driver-name">${nome}</div>
-              <div class="driver-car">${carro}${cor} • ${placa}</div>
+              <div class="driver-vehicle">
+                <span class="driver-model">${carro}${cor}</span>
+                <span class="driver-plate">${placa}</span>
+              </div>
               <div class="driver-tap">Toque para ver detalhes</div>
             </div>
           </div>
@@ -461,15 +464,15 @@
     function setPassengerStatus(status) {
       passengerRideStatus = status;
       const base = passengerActiveRideId ? `Corrida #${passengerActiveRideId}` : "";
-      let texto = "Aguardando motorista...";
+      let texto = "Aguardando motorista";
       if (status === "motorista_a_caminho") {
-        texto = "Motorista aceitou e esta a caminho";
+        texto = "Motorista a caminho";
       }
       if (status === "motorista_no_local") {
-        texto = "Motorista chegou ao local";
+        texto = "Motorista chegou";
       }
       if (status === "em_andamento") {
-        texto = "Corrida em andamento";
+        texto = "Em corrida";
       }
       passengerWaitingText.textContent = base ? `${texto} (${base})` : texto;
       passengerWaitingText.classList.toggle("online", status !== "em_andamento");
