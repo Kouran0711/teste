@@ -807,6 +807,15 @@ body.driver-mode #logoutBtn {
   letter-spacing: -0.01em;
 }
 
+.route-summary {
+  font-size: 13px;
+  color: var(--muted);
+  background: #f3f4f6;
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
 .hidden {
   display: none;
 }

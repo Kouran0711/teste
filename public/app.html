@@ -46,11 +46,12 @@
         <div id="passengerRideInfo" class="ride-item hidden"></div>
 
         <div id="passengerForm">
-          <div class="form-field">
-            <label for="origemInput">Sua localizacao atual</label>
-            <input id="origemInput" placeholder="Aguardando GPS..." readonly>
+          <div class="form-field autocomplete">
+            <label for="origemInput">Origem</label>
+            <input id="origemInput" placeholder="Rua, numero">
+            <div class="autocomplete-list hidden" id="origemList"></div>
           </div>
-          <button class="button secondary" type="button" id="usarLocalizacao">Atualizar localizacao</button>
+          <button class="button secondary" type="button" id="usarLocalizacao">Usar minha localizacao</button>
 
           <div class="form-field autocomplete">
             <label for="destinoInput">Destino</label>
@@ -66,7 +67,8 @@
               <option value="pix">Pix</option>
             </select>
           </div>
-          <div class="fare-amount" id="valorEstimado">Valor da corrida: R$ 0,00</div>
+          <div class="route-summary hidden" id="routeSummary"></div>
+          <div class="fare-amount hidden" id="valorEstimado">Valor da corrida: R$ 0,00</div>
           <button class="button" type="button" id="solicitarCorrida">Iniciar corrida</button>
         </div>
       </div>
@@ -208,9 +210,11 @@
 
     const origemInput = document.getElementById("origemInput");
     const destinoInput = document.getElementById("destinoInput");
+    const origemList = document.getElementById("origemList");
     const destinoList = document.getElementById("destinoList");
     const pagamentoSelect = document.getElementById("pagamentoSelect");
     const valorEstimado = document.getElementById("valorEstimado");
+    const routeSummary = document.getElementById("routeSummary");
     const solicitarCorridaBtn = document.getElementById("solicitarCorrida");
     const usarLocalizacaoBtn = document.getElementById("usarLocalizacao");
 
@@ -391,6 +395,28 @@
         el.disabled = !enabled;
       });
       passengerForm?.classList.toggle("hidden", !enabled);
+    }
+
+    function updatePassengerRouteSummary() {
+      if (!routeSummary) return;
+      const origemTexto = origemInput.value.trim();
+      const destinoTexto = destinoInput.value.trim();
+      if (origemTexto && destinoTexto) {
+        routeSummary.textContent = `Origem: ${origemTexto} • Destino: ${destinoTexto}`;
+        routeSummary.classList.remove("hidden");
+        return;
+      }
+      if (origemTexto) {
+        routeSummary.textContent = `Origem: ${origemTexto}`;
+        routeSummary.classList.remove("hidden");
+        return;
+      }
+      if (destinoTexto) {
+        routeSummary.textContent = `Destino: ${destinoTexto}`;
+        routeSummary.classList.remove("hidden");
+        return;
+      }
+      routeSummary.classList.add("hidden");
     }
 
     function renderPassengerRideInfo() {
@@ -884,6 +910,7 @@
         } else {
           origemInput.value = `Lat ${passengerOriginCoords.lat.toFixed(5)}, Lng ${passengerOriginCoords.lng.toFixed(5)}`;
         }
+        updatePassengerRouteSummary();
         updatePassengerMarkers();
         if (passengerDestinationCoords) {
           updatePassengerRoute();
@@ -904,7 +931,7 @@
       clearMessage(passengerMessage);
       if (!passengerOriginCoords || !passengerDestinationCoords) {
         if (valorEstimado) {
-          valorEstimado.textContent = "Valor da corrida: R$ 0,00";
+          valorEstimado.classList.add("hidden");
         }
         return null;
       }
@@ -917,7 +944,10 @@
 
       passengerDistanceKm = route.distanceKm;
       const valor = passengerDistanceKm * 1.9;
-      valorEstimado.textContent = `Valor da corrida: R$ ${valor.toFixed(2)}`;
+      if (valorEstimado) {
+        valorEstimado.textContent = `Valor da corrida: R$ ${valor.toFixed(2)}`;
+        valorEstimado.classList.remove("hidden");
+      }
 
       if (passengerMapReady) {
         setRoute(passengerMap, "passenger", { type: "Feature", geometry: route.geometry }, "#0e7c86");
@@ -950,6 +980,7 @@
             } else if (!origemInput.value || origemInput.value === "Aguardando GPS...") {
               origemInput.value = `Lat ${passengerOriginCoords.lat.toFixed(5)}, Lng ${passengerOriginCoords.lng.toFixed(5)}`;
             }
+            updatePassengerRouteSummary();
           }
 
           updatePassengerMarkers();
@@ -1631,9 +1662,27 @@
       }
     }
 
+    createAutocomplete(origemInput, origemList, (coords) => {
+      passengerOriginMode = "manual";
+      passengerOriginCoords = coords;
+      updatePassengerRouteSummary();
+      updatePassengerRoute();
+    });
     createAutocomplete(destinoInput, destinoList, (coords) => {
       passengerDestinationCoords = coords;
+      updatePassengerRouteSummary();
       updatePassengerRoute();
+    });
+
+    origemInput.addEventListener("input", () => {
+      passengerOriginMode = "manual";
+      passengerOriginCoords = null;
+      updatePassengerRouteSummary();
+    });
+
+    destinoInput.addEventListener("input", () => {
+      passengerDestinationCoords = null;
+      updatePassengerRouteSummary();
     });
 
     usarLocalizacaoBtn.addEventListener("click", async () => {
@@ -1658,11 +1707,28 @@
       try {
         setPassengerSubmitting();
         if (!passengerOriginCoords) {
-          const ok = await requestPassengerLocation();
-          if (!ok || !passengerOriginCoords) {
-            showMessage(passengerMessage, "error", "Ative o GPS para usar sua localizacao.");
-            clearPassengerWaiting();
-            return;
+          if (passengerOriginMode === "manual") {
+            if (!origemTexto) {
+              showMessage(passengerMessage, "error", "Informe a origem.");
+              clearPassengerWaiting();
+              return;
+            }
+            const results = await forwardGeocode(origemTexto, passengerOriginCoords);
+            if (!results[0]) {
+              showMessage(passengerMessage, "error", "Origem nao encontrada.");
+              clearPassengerWaiting();
+              return;
+            }
+            passengerOriginCoords = results[0].coords;
+            origemTexto = results[0].label;
+            origemInput.value = results[0].label;
+          } else {
+            const ok = await requestPassengerLocation();
+            if (!ok || !passengerOriginCoords) {
+              showMessage(passengerMessage, "error", "Ative o GPS para usar sua localizacao.");
+              clearPassengerWaiting();
+              return;
+            }
           }
         }
         if (!origemTexto && passengerAutoLabel) {
