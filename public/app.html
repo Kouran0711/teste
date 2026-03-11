@@ -218,6 +218,13 @@
     const solicitarCorridaBtn = document.getElementById("solicitarCorrida");
     const usarLocalizacaoBtn = document.getElementById("usarLocalizacao");
 
+    if (valorEstimado) {
+      valorEstimado.classList.add("hidden");
+    }
+    if (routeSummary) {
+      routeSummary.classList.add("hidden");
+    }
+
     const driverStatus = document.getElementById("driverStatus");
     const driverGpsWarning = document.getElementById("driverGpsWarning");
     const driverToggle = document.getElementById("driverToggle");
@@ -267,6 +274,7 @@
     let passengerAutoLabel = "";
     let passengerGpsReady = false;
     let passengerGeoErrorAt = 0;
+    let passengerGeoRequested = false;
     let passengerWaiting = false;
     let passengerActiveRideId = null;
     let passengerRideStatus = null;
@@ -399,23 +407,7 @@
 
     function updatePassengerRouteSummary() {
       if (!routeSummary) return;
-      const origemTexto = origemInput.value.trim();
-      const destinoTexto = destinoInput.value.trim();
-      if (origemTexto && destinoTexto) {
-        routeSummary.textContent = `Origem: ${origemTexto} • Destino: ${destinoTexto}`;
-        routeSummary.classList.remove("hidden");
-        return;
-      }
-      if (origemTexto) {
-        routeSummary.textContent = `Origem: ${origemTexto}`;
-        routeSummary.classList.remove("hidden");
-        return;
-      }
-      if (destinoTexto) {
-        routeSummary.textContent = `Destino: ${destinoTexto}`;
-        routeSummary.classList.remove("hidden");
-        return;
-      }
+      routeSummary.textContent = "";
       routeSummary.classList.add("hidden");
     }
 
@@ -703,6 +695,9 @@
       const resposta = await fetch(url.toString(), {
         headers: { "Accept-Language": "pt-BR" }
       });
+      if (!resposta.ok) {
+        throw new Error("Falha ao buscar endereco");
+      }
       const dados = await resposta.json();
       return (dados || []).map((item) => ({
         label: item.display_name,
@@ -717,17 +712,24 @@
       if (!coords) {
         return null;
       }
-      const url = new URL("https://nominatim.openstreetmap.org/reverse");
-      url.searchParams.set("format", "jsonv2");
-      url.searchParams.set("lat", coords.lat);
-      url.searchParams.set("lon", coords.lng);
-      url.searchParams.set("zoom", "18");
-      url.searchParams.set("addressdetails", "1");
-      const resposta = await fetch(url.toString(), {
-        headers: { "Accept-Language": "pt-BR" }
-      });
-      const dados = await resposta.json();
-      return dados.display_name || null;
+      try {
+        const url = new URL("https://nominatim.openstreetmap.org/reverse");
+        url.searchParams.set("format", "jsonv2");
+        url.searchParams.set("lat", coords.lat);
+        url.searchParams.set("lon", coords.lng);
+        url.searchParams.set("zoom", "18");
+        url.searchParams.set("addressdetails", "1");
+        const resposta = await fetch(url.toString(), {
+          headers: { "Accept-Language": "pt-BR" }
+        });
+        if (!resposta.ok) {
+          return null;
+        }
+        const dados = await resposta.json();
+        return dados.display_name || null;
+      } catch (erro) {
+        return null;
+      }
     }
 
     async function fetchRoute(origin, destination) {
@@ -809,7 +811,7 @@
       }).addTo(passengerMap);
 
       startPassengerWatch();
-      requestPassengerLocation();
+      requestPassengerLocation(false);
     }
 
     function geolocationErrorMessage() {
@@ -875,25 +877,27 @@
       }
     }
 
-    async function requestPassengerLocation() {
+    async function requestPassengerLocation(showError = true) {
       if (!navigator.geolocation) {
-        showMessage(passengerMessage, "error", "Geolocalizacao nao suportada.");
+        if (showError) {
+          showMessage(passengerMessage, "error", "Geolocalizacao nao suportada.");
+        }
         return false;
       }
       try {
         let pos = null;
         try {
-          pos = await getPositionPromise({ enableHighAccuracy: true, timeout: 25000, maximumAge: 0 });
+          pos = await getPositionPromise({ enableHighAccuracy: true, timeout: 45000, maximumAge: 0 });
         } catch (error) {
           if (error && (error.code === 2 || error.code === 3)) {
-            pos = await getPositionPromise({ enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 });
+            pos = await getPositionPromise({ enableHighAccuracy: false, timeout: 45000, maximumAge: 600000 });
           } else {
             throw error;
           }
         }
 
         if (!pos || !pos.coords) {
-          if (shouldShowGeoError()) {
+          if (showError && shouldShowGeoError()) {
             showMessage(passengerMessage, "error", "Nao foi possivel obter localizacao. Verifique o GPS.");
           }
           return false;
@@ -920,7 +924,7 @@
         }
         return true;
       } catch (error) {
-        if (shouldShowGeoError()) {
+        if (showError && shouldShowGeoError()) {
           showMessage(passengerMessage, "error", geolocationErrorMessageWithDetail(error));
         }
         return false;
@@ -936,10 +940,27 @@
         return null;
       }
 
-      const route = await fetchRoute(passengerOriginCoords, passengerDestinationCoords);
+      let route = null;
+      try {
+        route = await fetchRoute(passengerOriginCoords, passengerDestinationCoords);
+      } catch (error) {
+        route = null;
+      }
+
       if (!route) {
-        showMessage(passengerMessage, "error", "Nao foi possivel calcular a rota.");
-        return null;
+        const distLinear = distanceMeters(passengerOriginCoords, passengerDestinationCoords) / 1000;
+        if (!Number.isFinite(distLinear)) {
+          return null;
+        }
+        passengerDistanceKm = distLinear;
+        const valor = passengerDistanceKm * 1.9;
+        if (valorEstimado) {
+          valorEstimado.textContent = `Valor da corrida: R$ ${valor.toFixed(2)}`;
+          valorEstimado.classList.remove("hidden");
+        }
+        updatePassengerMarkers();
+        passengerLastRouteUpdate = Date.now();
+        return passengerDistanceKm;
       }
 
       passengerDistanceKm = route.distanceKm;
@@ -996,11 +1017,11 @@
           }
         },
         (error) => {
-          if (shouldShowGeoError()) {
+          if (passengerGeoRequested && shouldShowGeoError()) {
             showMessage(passengerMessage, "error", geolocationErrorMessageWithDetail(error));
           }
         },
-        { enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 45000, maximumAge: 10000 }
       );
     }
 
@@ -1201,6 +1222,17 @@
       return street;
     }
 
+    function shortAddressList(label) {
+      if (!label) return "";
+      const parts = String(label)
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      if (!parts.length) return "";
+      const limite = Math.min(parts.length, 3);
+      return parts.slice(0, limite).join(", ");
+    }
+
     function updateDriverInstruction() {
       if (!driverMapOverlay) return;
 
@@ -1363,8 +1395,8 @@
         <strong>Passageiro</strong>: ${currentRide.passageiro?.nome || "Nao informado"}<br>
         <strong>Telefone</strong>: ${currentRide.passageiro?.telefone || "Nao informado"}<br>
         ${currentRide.passageiro?.email ? `<strong>Email</strong>: ${currentRide.passageiro.email}<br>` : ""}
-        Origem: ${currentRide.origem}<br>
-        Destino: ${currentRide.destino}<br>
+        Origem: ${shortAddressList(currentRide.origem)}<br>
+        Destino: ${shortAddressList(currentRide.destino)}<br>
         Valor: R$ ${Number(currentRide.valor || 0).toFixed(2)}<br>
         Status: ${currentRide.status}<br>
       `;
@@ -1459,8 +1491,8 @@
           return `
             <div class="ride-item">
               <strong>Corrida #${corrida.id}</strong>
-              Origem: ${corrida.origem}<br>
-              Destino: ${corrida.destino}<br>
+              Origem: ${shortAddressList(corrida.origem)}<br>
+              Destino: ${shortAddressList(corrida.destino)}<br>
               Valor: R$ ${Number(corrida.valor || 0).toFixed(2)}<br>
               Distancia: ${dist}<br>
               <button class="button" type="button" onclick="aceitarCorrida(${corrida.id})">Aceitar</button>
@@ -1498,8 +1530,8 @@
             <div class="ride-item">
               <strong>Corrida #${corrida.id}</strong><br>
               ${dataTexto ? `${dataTexto}<br>` : ""}
-              Origem: ${corrida.origem}<br>
-              Destino: ${corrida.destino}<br>
+              Origem: ${shortAddressList(corrida.origem)}<br>
+              Destino: ${shortAddressList(corrida.destino)}<br>
               Valor: R$ ${Number(corrida.valor || 0).toFixed(2)}<br>
               Status: ${statusTexto}${motivo}
             </div>
@@ -1547,8 +1579,8 @@
 
       rideModalMeta.textContent = `Corrida #${corrida.id}`;
       rideModalDetails.innerHTML = `
-        <strong>Origem</strong>: ${corrida.origem}<br>
-        <strong>Destino</strong>: ${corrida.destino}<br>
+        <strong>Origem</strong>: ${shortAddressList(corrida.origem)}<br>
+        <strong>Destino</strong>: ${shortAddressList(corrida.destino)}<br>
         <strong>Valor</strong>: R$ ${Number(corrida.valor || 0).toFixed(2)}<br>
         <strong>Distancia</strong>: ${dist}
       `;
@@ -1677,17 +1709,26 @@
     origemInput.addEventListener("input", () => {
       passengerOriginMode = "manual";
       passengerOriginCoords = null;
+      passengerDistanceKm = null;
+      if (valorEstimado) {
+        valorEstimado.classList.add("hidden");
+      }
       updatePassengerRouteSummary();
     });
 
     destinoInput.addEventListener("input", () => {
       passengerDestinationCoords = null;
+      passengerDistanceKm = null;
+      if (valorEstimado) {
+        valorEstimado.classList.add("hidden");
+      }
       updatePassengerRouteSummary();
     });
 
     usarLocalizacaoBtn.addEventListener("click", async () => {
       clearMessage(passengerMessage);
-      await requestPassengerLocation();
+      passengerGeoRequested = true;
+      await requestPassengerLocation(true);
     });
 
     solicitarCorridaBtn.addEventListener("click", async () => {
@@ -1713,8 +1754,15 @@
               clearPassengerWaiting();
               return;
             }
-            const results = await forwardGeocode(origemTexto, passengerOriginCoords);
-            if (!results[0]) {
+            let results = null;
+            try {
+              results = await forwardGeocode(origemTexto, passengerOriginCoords);
+            } catch (erro) {
+              showMessage(passengerMessage, "error", "Nao foi possivel buscar o endereco de origem.");
+              clearPassengerWaiting();
+              return;
+            }
+            if (!results || !results[0]) {
               showMessage(passengerMessage, "error", "Origem nao encontrada.");
               clearPassengerWaiting();
               return;
@@ -1723,7 +1771,8 @@
             origemTexto = results[0].label;
             origemInput.value = results[0].label;
           } else {
-            const ok = await requestPassengerLocation();
+            passengerGeoRequested = true;
+            const ok = await requestPassengerLocation(true);
             if (!ok || !passengerOriginCoords) {
               showMessage(passengerMessage, "error", "Ative o GPS para usar sua localizacao.");
               clearPassengerWaiting();
@@ -1736,8 +1785,15 @@
           origemInput.value = passengerAutoLabel;
         }
         if (!passengerDestinationCoords) {
-          const results = await forwardGeocode(destinoTexto, passengerOriginCoords);
-          if (!results[0]) {
+          let results = null;
+          try {
+            results = await forwardGeocode(destinoTexto, passengerOriginCoords);
+          } catch (erro) {
+            showMessage(passengerMessage, "error", "Nao foi possivel buscar o endereco de destino.");
+            clearPassengerWaiting();
+            return;
+          }
+          if (!results || !results[0]) {
             showMessage(passengerMessage, "error", "Destino nao encontrado.");
             clearPassengerWaiting();
             return;
